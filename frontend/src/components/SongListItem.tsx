@@ -1,0 +1,202 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
+import { Song, getFullThumbnailUrl } from '../services/api';
+import { usePlayerStore } from '../store/playerStore';
+import { Colors } from '../constants/theme';
+import { StarRating } from './StarRating';
+
+interface SongListItemProps {
+  song: Song;
+  playlistContext?: Song[];
+  onAddToPlaylist?: (song: Song) => void;
+  onDelete?: (song: Song) => void;
+}
+
+function formatDuration(sec: number): string {
+  const mins = Math.floor(sec / 60);
+  const remSec = Math.floor(sec % 60);
+  return `${mins}:${remSec < 10 ? '0' : ''}${remSec}`;
+}
+
+export const SongListItem: React.FC<SongListItemProps> = ({
+  song,
+  playlistContext,
+  onAddToPlaylist,
+  onDelete
+}) => {
+  const { currentSong, isPlaying, playSong, toggleFavorite, setRating } = usePlayerStore();
+  const isCurrent = currentSong?.id === song.id;
+  const thumbUrl = getFullThumbnailUrl(song.thumbnailUrl || song.thumbnailPath);
+
+  return (
+    <TouchableOpacity
+      style={[styles.container, isCurrent && styles.containerCurrent]}
+      onPress={() => playSong(song, playlistContext)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.artContainer}>
+        {thumbUrl ? (
+          <Image
+            source={{ uri: thumbUrl }}
+            style={styles.art}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={styles.placeholderArt}>
+            <Ionicons name="musical-note" size={20} color={Colors.textMuted} />
+          </View>
+        )}
+        {isCurrent && (
+          <View style={styles.playingBadge}>
+            <Ionicons
+              name={isPlaying ? 'volume-high' : 'pause'}
+              size={14}
+              color="#FFFFFF"
+            />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.infoContainer}>
+        <Text
+          numberOfLines={1}
+          style={[styles.title, isCurrent && styles.titleCurrent]}
+        >
+          {song.title}
+        </Text>
+        <Text numberOfLines={1} style={styles.artist}>
+          {song.artistName || 'Unknown Artist'}
+        </Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.duration}>{formatDuration(song.durationSec)}</Text>
+          <View style={styles.dot} />
+          <StarRating
+            rating={song.rating}
+            size={12}
+            onRate={(stars) => setRating(song.id, stars)}
+          />
+        </View>
+      </View>
+
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => toggleFavorite(song.id)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={song.isFavorite ? 'heart' : 'heart-outline'}
+            size={20}
+            color={song.isFavorite ? Colors.favorite : Colors.textMuted}
+          />
+        </TouchableOpacity>
+
+        {onAddToPlaylist && (
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => onAddToPlaylist(song)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={Colors.textMuted} />
+          </TouchableOpacity>
+        )}
+
+        {onDelete && (
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => onDelete(song)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginVertical: 4,
+    backgroundColor: Colors.surface,
+  },
+  containerCurrent: {
+    backgroundColor: Colors.surfaceElevated,
+    borderColor: Colors.primaryGlow,
+    borderWidth: 1,
+  },
+  artContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: Colors.surfaceBorder,
+  },
+  art: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholderArt: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playingBadge: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(16, 185, 129, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoContainer: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  titleCurrent: {
+    color: Colors.primary,
+  },
+  artist: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  duration: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  dot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: Colors.textMuted,
+    marginHorizontal: 6,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionBtn: {
+    padding: 4,
+  },
+});
