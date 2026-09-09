@@ -38,13 +38,25 @@ export function streamAudioFile(filePath: string, request: FastifyRequest, reply
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const mimeType = getMimeType(filePath);
+  const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+
+  // Always advertise range support, cache control and ETag
+  reply.header('Accept-Ranges', 'bytes');
+  reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+  reply.header('ETag', etag);
+
+  // Check If-None-Match for 304 Not Modified
+  const ifNoneMatch = request.headers['if-none-match'];
+  if (ifNoneMatch === etag) {
+    return reply.status(304).send();
+  }
+
   const rangeHeader = request.headers.range;
 
   if (!rangeHeader) {
     reply.header('Content-Type', mimeType);
     reply.header('Content-Length', fileSize);
-    reply.header('Accept-Ranges', 'bytes');
-    return reply.send(fs.createReadStream(filePath));
+    return reply.send(fs.createReadStream(filePath, { highWaterMark: 256 * 1024 }));
   }
 
   // Parse Range header (e.g. "bytes=0-1024" or "bytes=1024-")
@@ -58,13 +70,13 @@ export function streamAudioFile(filePath: string, request: FastifyRequest, reply
   }
 
   const chunkSize = end - start + 1;
-  const stream = fs.createReadStream(filePath, { start, end });
+  const stream = fs.createReadStream(filePath, { start, end, highWaterMark: 256 * 1024 });
 
   reply.status(206);
   reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-  reply.header('Accept-Ranges', 'bytes');
   reply.header('Content-Length', chunkSize);
   reply.header('Content-Type', mimeType);
 
   return reply.send(stream);
 }
+

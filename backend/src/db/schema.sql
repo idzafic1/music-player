@@ -96,3 +96,23 @@ CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- Download Jobs
+CREATE TABLE IF NOT EXISTS download_jobs (
+  id              TEXT PRIMARY KEY,
+  type            TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  url             TEXT,
+  query           TEXT,
+  song_id         TEXT,
+  playlist_id     TEXT,
+  title           TEXT,
+  artist_name     TEXT,
+  error           TEXT,
+  completed_count INTEGER DEFAULT 0,
+  total_count     INTEGER DEFAULT 0,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_download_jobs_status ON download_jobs(status);
+

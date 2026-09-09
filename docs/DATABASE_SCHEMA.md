@@ -104,6 +104,25 @@ CREATE TABLE settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- Download Jobs (durable task ledger across restarts)
+CREATE TABLE download_jobs (
+  id              TEXT PRIMARY KEY,
+  type            TEXT NOT NULL,          -- 'single' | 'playlist'
+  status          TEXT NOT NULL,          -- 'pending' | 'downloading' | 'tagging' | 'done' | 'failed'
+  url             TEXT,
+  query           TEXT,
+  song_id         TEXT,
+  playlist_id     TEXT,
+  title           TEXT,
+  artist_name     TEXT,
+  error           TEXT,
+  completed_count INTEGER DEFAULT 0,
+  total_count     INTEGER DEFAULT 0,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_download_jobs_status ON download_jobs(status);
 ```
 
 ## Derived stats (computed, not stored)

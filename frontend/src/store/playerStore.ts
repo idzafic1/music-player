@@ -46,6 +46,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     }
   });
 
+  audioEngine.onRemoteAction((action) => {
+    if (action === 'next') {
+      get().nextTrack();
+    } else if (action === 'previous') {
+      get().prevTrack();
+    }
+  });
+
   return {
     currentSong: null,
     isPlaying: false,

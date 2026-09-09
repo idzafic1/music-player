@@ -5,7 +5,7 @@ import os from 'node:os';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/index.js';
 import { AUDIO_DIR, THUMBNAILS_DIR } from '../config.js';
-import { getOrCreateArtist, setSongGenres, getSongById, createPlaylist, addSongToPlaylist } from './library.js';
+import { getOrCreateArtist, setSongGenres, createPlaylist, addSongToPlaylist } from './library.js';
 
 export type JobStatus = 'pending' | 'downloading' | 'tagging' | 'done' | 'failed';
 
@@ -31,8 +31,94 @@ const jobs = new Map<string, DownloadJob>();
 const queue: (() => Promise<void>)[] = [];
 let isProcessingQueue = false;
 
+// Initialize and clean up orphaned jobs on startup
+export function initDownloader() {
+  try {
+    const db = getDb();
+    const now = Math.floor(Date.now() / 1000);
+    db.prepare(`
+      UPDATE download_jobs
+      SET status = 'failed', error = 'Server restarted during processing', updated_at = ?
+      WHERE status IN ('pending', 'downloading', 'tagging')
+    `).run(now);
+  } catch (err) {
+    console.error('Failed to clean up stale download jobs:', err);
+  }
+}
+
+function saveJob(job: DownloadJob) {
+  jobs.set(job.id, job);
+  try {
+    const db = getDb();
+    const now = Math.floor(Date.now() / 1000);
+    db.prepare(`
+      INSERT INTO download_jobs (
+        id, type, status, url, query, song_id, playlist_id, title, artist_name,
+        error, completed_count, total_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status = excluded.status,
+        song_id = excluded.song_id,
+        playlist_id = excluded.playlist_id,
+        title = excluded.title,
+        artist_name = excluded.artist_name,
+        error = excluded.error,
+        completed_count = excluded.completed_count,
+        total_count = excluded.total_count,
+        updated_at = excluded.updated_at
+    `).run(
+      job.id,
+      job.type,
+      job.status,
+      job.url || null,
+      job.query || null,
+      job.songId || null,
+      job.playlistId || null,
+      job.title || null,
+      job.artistName || null,
+      job.error || null,
+      job.completedCount || 0,
+      job.totalCount || 0,
+      job.createdAt,
+      now
+    );
+  } catch (err) {
+    console.error(`Failed to persist job ${job.id} to SQLite:`, err);
+  }
+}
+
 export function getJob(jobId: string): DownloadJob | undefined {
-  return jobs.get(jobId);
+  if (jobs.has(jobId)) {
+    return jobs.get(jobId);
+  }
+
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM download_jobs WHERE id = ?').get(jobId) as any;
+    if (row) {
+      const job: DownloadJob = {
+        id: row.id,
+        type: row.type,
+        status: row.status,
+        url: row.url || undefined,
+        query: row.query || undefined,
+        songId: row.song_id || undefined,
+        playlistId: row.playlist_id || undefined,
+        title: row.title || undefined,
+        artistName: row.artist_name || undefined,
+        error: row.error || undefined,
+        completedCount: row.completed_count,
+        totalCount: row.total_count,
+        createdAt: row.created_at
+      };
+      jobs.set(job.id, job);
+      return job;
+    }
+  } catch (err) {
+    console.error('Error fetching job from db:', err);
+  }
+
+  return undefined;
 }
 
 function enqueue(task: () => Promise<void>) {
@@ -58,6 +144,15 @@ async function processQueue() {
   isProcessingQueue = false;
 }
 
+function getYtDlpBaseArgs(): string[] {
+  const args = ['--js-runtimes', 'node:node', '--no-warnings'];
+  const cookiesPath = process.env.COOKIES_PATH;
+  if (cookiesPath && fs.existsSync(cookiesPath)) {
+    args.push('--cookies', cookiesPath);
+  }
+  return args;
+}
+
 function runCommand(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args);
@@ -79,11 +174,10 @@ export async function fetchVideoMetadata(target: string): Promise<any | null> {
   const arg = isQuery ? `ytsearch1:${target}` : target;
 
   const res = await runCommand('yt-dlp', [
-    '--js-runtimes', 'node:node',
+    ...getYtDlpBaseArgs(),
     arg,
     '--dump-json',
-    '--no-playlist',
-    '--no-warnings'
+    '--no-playlist'
   ]);
 
   if (res.code !== 0 || !res.stdout.trim()) {
@@ -110,17 +204,19 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
   } else {
     job.query = target;
   }
-  jobs.set(jobId, job);
+  saveJob(job);
 
   enqueue(async () => {
     try {
       job.status = 'downloading';
+      saveJob(job);
 
       // 1. Resolve metadata
       const meta = await fetchVideoMetadata(target);
       if (!meta || !meta.id) {
         job.status = 'failed';
         job.error = 'Could not resolve YouTube video metadata';
+        saveJob(job);
         return;
       }
 
@@ -134,6 +230,7 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
         job.status = 'done';
         job.songId = existing.id;
         job.title = meta.title;
+        saveJob(job);
         return;
       }
 
@@ -141,9 +238,10 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-dl-'));
       const outputTemplate = path.join(tmpDir, '%(id)s.%(ext)s');
 
-      // 3. Download audio and thumbnail
+      // 3. Download audio with optimal format selector
       const dlRes = await runCommand('yt-dlp', [
-        '--js-runtimes', 'node:node',
+        ...getYtDlpBaseArgs(),
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
         '-x',
         '--audio-format', 'm4a',
         '--audio-quality', '0',
@@ -157,41 +255,65 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
       if (dlRes.code !== 0) {
         job.status = 'failed';
         job.error = `yt-dlp download failed: ${dlRes.stderr.slice(0, 300)}`;
+        saveJob(job);
         fs.rmSync(tmpDir, { recursive: true, force: true });
         return;
       }
 
       job.status = 'tagging';
+      saveJob(job);
 
-      // 4. Move files to permanent storage
+      // 4. Move files to permanent storage with EBU R128 Loudness Normalization
       const songId = uuidv4();
       const audioSourceFile = path.join(tmpDir, `${sourceId}.m4a`);
       const targetAudioPath = path.join(AUDIO_DIR, `${songId}.m4a`);
 
+      let rawAudioPath = audioSourceFile;
       if (!fs.existsSync(audioSourceFile)) {
-        // Look for any audio file matching sourceId
         const files = fs.readdirSync(tmpDir);
         const audioFile = files.find(f => f.startsWith(sourceId) && !f.endsWith('.webp') && !f.endsWith('.jpg') && !f.endsWith('.png'));
         if (audioFile) {
-          fs.copyFileSync(path.join(tmpDir, audioFile), targetAudioPath);
+          rawAudioPath = path.join(tmpDir, audioFile);
         } else {
           job.status = 'failed';
           job.error = 'Downloaded audio file was not found';
+          saveJob(job);
           fs.rmSync(tmpDir, { recursive: true, force: true });
           return;
         }
-      } else {
-        fs.copyFileSync(audioSourceFile, targetAudioPath);
       }
 
-      // Handle thumbnail
+      // Apply EBU R128 loudnorm filter (I=-16 LUFS, TP=-1.5 dB, LRA=11)
+      const normalizedTemp = path.join(tmpDir, `${sourceId}-normalized.m4a`);
+      const normRes = await runCommand('ffmpeg', [
+        '-y',
+        '-i', rawAudioPath,
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-c:a', 'aac',
+        '-b:a', '256k',
+        normalizedTemp
+      ]);
+
+      if (normRes.code === 0 && fs.existsSync(normalizedTemp)) {
+        fs.copyFileSync(normalizedTemp, targetAudioPath);
+      } else {
+        // Fallback to raw audio if loudnorm transcode fails
+        fs.copyFileSync(rawAudioPath, targetAudioPath);
+      }
+
+      // 5. Handle thumbnail: center crop to 600x600 square JPEG
       let targetThumbPath: string | null = null;
       const thumbCandidates = fs.readdirSync(tmpDir).filter(f => f.startsWith(sourceId) && (f.endsWith('.jpg') || f.endsWith('.webp') || f.endsWith('.png')));
       if (thumbCandidates.length > 0) {
         const thumbSource = path.join(tmpDir, thumbCandidates[0]);
         targetThumbPath = path.join(THUMBNAILS_DIR, `${songId}.jpg`);
-        // Convert with ffmpeg to standard JPG
-        await runCommand('ffmpeg', ['-y', '-i', thumbSource, '-vf', 'scale=500:500:force_original_aspect_ratio=increase,crop=500:500', targetThumbPath]);
+        // Crop centered square and scale to 600x600
+        await runCommand('ffmpeg', [
+          '-y',
+          '-i', thumbSource,
+          '-vf', "crop='min(iw,ih)':'min(iw,ih)',scale=600:600",
+          targetThumbPath
+        ]);
         if (!fs.existsSync(targetThumbPath)) {
           fs.copyFileSync(thumbSource, targetThumbPath);
         }
@@ -199,7 +321,7 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
 
       fs.rmSync(tmpDir, { recursive: true, force: true });
 
-      // 5. Parse title, artist, genres
+      // 6. Parse title, artist, genres
       let title = (meta.title || 'Unknown Title').trim();
       let artistName = (meta.channel || meta.uploader || 'Unknown Artist').replace(/ - Topic$/i, '').trim();
 
@@ -259,9 +381,11 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
       job.songId = songId;
       job.title = title;
       job.artistName = artistName;
+      saveJob(job);
     } catch (err: any) {
       job.status = 'failed';
       job.error = err.message || 'Unknown download error';
+      saveJob(job);
     }
   });
 
@@ -280,15 +404,16 @@ export async function importYouTubePlaylist(playlistUrl: string, playlistNameOve
     failedVideos: [],
     createdAt: Math.floor(Date.now() / 1000)
   };
-  jobs.set(jobId, job);
+  saveJob(job);
 
   enqueue(async () => {
     try {
       job.status = 'downloading';
+      saveJob(job);
 
       // 1. Enumerate playlist videos
       const listRes = await runCommand('yt-dlp', [
-        '--js-runtimes', 'node:node',
+        ...getYtDlpBaseArgs(),
         '--flat-playlist',
         '--dump-json',
         playlistUrl
@@ -297,6 +422,7 @@ export async function importYouTubePlaylist(playlistUrl: string, playlistNameOve
       if (listRes.code !== 0 || !listRes.stdout.trim()) {
         job.status = 'failed';
         job.error = 'Failed to fetch playlist contents from YouTube';
+        saveJob(job);
         return;
       }
 
@@ -327,10 +453,14 @@ export async function importYouTubePlaylist(playlistUrl: string, playlistNameOve
       const finalPlaylistName = (playlistNameOverride || detectedPlaylistTitle || 'YouTube Import').trim();
       const playlist = createPlaylist(finalPlaylistName, `Imported from ${playlistUrl}`, 'youtube_import', playlistUrl);
       job.playlistId = playlist.id;
+      saveJob(job);
 
-      // 2. Download each video sequentially
+      // 2. Download each video sequentially with anti-bot jitter delay
       for (const item of items) {
         try {
+          // Random 1-2.5s jitter delay between items to avoid IP blocks
+          await new Promise(res => setTimeout(res, 1000 + Math.random() * 1500));
+
           const singleJobId = await downloadSingleSong(item.url);
           // Wait for single job to complete
           await new Promise<void>((resolve) => {
@@ -351,12 +481,15 @@ export async function importYouTubePlaylist(playlistUrl: string, playlistNameOve
           job.failedVideos?.push({ id: item.id, title: item.title, error: err.message || 'Error' });
         }
         job.completedCount = (job.completedCount || 0) + 1;
+        saveJob(job);
       }
 
       job.status = 'done';
+      saveJob(job);
     } catch (err: any) {
       job.status = 'failed';
       job.error = err.message || 'Playlist import failed';
+      saveJob(job);
     }
   });
 
