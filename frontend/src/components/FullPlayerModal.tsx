@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { usePlayerStore } from '../store/playerStore';
 import { getFullThumbnailUrl } from '../services/api';
 import { Colors, Spacing } from '../constants/theme';
@@ -204,6 +204,12 @@ export const FullPlayerModal: React.FC = () => {
                 <Text style={styles.timeText}>{formatTime(positionSec)}</Text>
                 <Text style={styles.timeText}>{formatTime(totalDuration)}</Text>
               </View>
+
+              {currentSong.source === 'online' && (
+                <Text style={styles.livePreviewNotice}>
+                  Live preview — download to save & enable seeking
+                </Text>
+              )}
             </View>
 
             {/* Main Controls */}
@@ -250,11 +256,15 @@ export const FullPlayerModal: React.FC = () => {
                 onPress={cycleRepeatMode}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons
-                  name={repeatMode === 'one' ? 'repeat' : 'repeat'}
-                  size={22}
-                  color={repeatMode !== 'off' ? Colors.primary : Colors.textMuted}
-                />
+                {repeatMode === 'one' ? (
+                  <MaterialIcons name="repeat-one" size={24} color={Colors.primary} />
+                ) : (
+                  <Ionicons
+                    name="repeat"
+                    size={24}
+                    color={repeatMode === 'all' ? Colors.primary : Colors.textMuted}
+                  />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -388,6 +398,13 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 12,
     color: Colors.textMuted,
+  },
+  livePreviewNotice: {
+    fontSize: 11,
+    color: Colors.accent,
+    textAlign: 'center',
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   controlsRow: {
     flexDirection: 'row',

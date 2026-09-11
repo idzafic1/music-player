@@ -22,3 +22,4 @@ backend/data/thumbnails/*
 .DS_Store
 *.log
 /tmp/
+*.sh

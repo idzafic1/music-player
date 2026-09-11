@@ -227,6 +227,7 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
       const db = getDb();
       const existing = db.prepare('SELECT id FROM songs WHERE source = ? AND source_id = ?').get('youtube', sourceId) as { id: string } | undefined;
       if (existing) {
+        db.prepare('DELETE FROM recommendations WHERE source_id = ?').run(sourceId);
         job.status = 'done';
         job.songId = existing.id;
         job.title = meta.title;
@@ -376,6 +377,8 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
       if (genresToInsert.length > 0) {
         setSongGenres(songId, genresToInsert);
       }
+
+      db.prepare('DELETE FROM recommendations WHERE source_id = ?').run(sourceId);
 
       job.status = 'done';
       job.songId = songId;

@@ -10,6 +10,8 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useOfflineStore } from '../store/offlineStore';
 import NetInfo from '@react-native-community/netinfo';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 if (Platform.OS !== 'web' && TrackPlayer && typeof TrackPlayer.registerPlaybackService === 'function') {
   try {
     TrackPlayer.registerPlaybackService(() => require('../services/service').default);
@@ -50,7 +52,7 @@ export default function RootLayout() {
   }, [checkBackendConnection]);
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -62,8 +64,9 @@ export default function RootLayout() {
         <Stack.Screen name="playlist/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="artist/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="import" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="wrapped" options={{ presentation: 'card' }} />
       </Stack>
       <FullPlayerModal />
-    </>
+    </SafeAreaProvider>
   );
 }

@@ -17,7 +17,10 @@ export interface RecommendationItem {
 export function getDailyRecommendations(): RecommendationItem[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT * FROM recommendations
+    SELECT r.* FROM recommendations r
+    WHERE r.source_id NOT IN (
+      SELECT source_id FROM songs WHERE source_id IS NOT NULL
+    )
     ORDER BY generated_at DESC, rowid ASC
   `).all() as any[];
 

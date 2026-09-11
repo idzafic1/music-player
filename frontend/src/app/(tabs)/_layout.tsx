@@ -54,14 +54,11 @@ export default function TabsLayout() {
             ),
           }}
         />
+
+        {/* stats.tsx is kept for route compatibility but hidden from the tab bar */}
         <Tabs.Screen
           name="stats"
-          options={{
-            title: 'Wrapped',
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={size} color={color} />
-            ),
-          }}
+          options={{ href: null }}
         />
         <Tabs.Screen
           name="settings"

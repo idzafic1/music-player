@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import TrackPlayer, { State, Event, Capability, AppKilledPlaybackBehavior, useProgress } from 'react-native-track-player';
 import { Howl } from 'howler';
-import { Song, api, getFullStreamUrl } from './api';
+import { Song, api, getFullStreamUrl, getApiBaseUrl } from './api';
 import { getLocalUri } from './offlineStorage';
 
 export type ProgressCallback = (positionSec: number, durationSec: number) => void;
@@ -183,8 +183,16 @@ class NativeAudioEngine extends BaseAudioEngine {
     this.lastPositionSec = 0;
     this.isEnginePlaying = false;
 
-    const localUri = await getLocalUri(song.id);
-    const url = localUri || getFullStreamUrl(song.id);
+    let url = await getLocalUri(song.id);
+    if (!url) {
+      if (song.streamUrl?.startsWith('http://') || song.streamUrl?.startsWith('https://')) {
+        url = song.streamUrl;
+      } else if (song.streamUrl?.startsWith('/')) {
+        url = `${getApiBaseUrl()}${song.streamUrl}`;
+      } else {
+        url = getFullStreamUrl(song.id);
+      }
+    }
 
     await TrackPlayer.reset();
     await TrackPlayer.add({
@@ -238,8 +246,16 @@ class WebAudioEngine extends BaseAudioEngine {
       this.progressInterval = null;
     }
 
-    const localUri = await getLocalUri(song.id);
-    const url = localUri || getFullStreamUrl(song.id);
+    let url = await getLocalUri(song.id);
+    if (!url) {
+      if (song.streamUrl?.startsWith('http://') || song.streamUrl?.startsWith('https://')) {
+        url = song.streamUrl;
+      } else if (song.streamUrl?.startsWith('/')) {
+        url = `${getApiBaseUrl()}${song.streamUrl}`;
+      } else {
+        url = getFullStreamUrl(song.id);
+      }
+    }
 
     this.sound = new Howl({
       src: [url],

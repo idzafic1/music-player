@@ -25,6 +25,7 @@ export default function LibraryScreen() {
   const [sort, setSort] = useState<'added_at' | 'title' | 'play_count'>('added_at');
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
+  const [localQuery, setLocalQuery] = useState('');
   const downloadedSongIds = useOfflineStore((s) => s.downloadedSongIds);
 
   const [songs, setSongs] = useState<Song[]>([]);
@@ -44,7 +45,7 @@ export default function LibraryScreen() {
     try {
       if (section === 'songs') {
         const [songsRes, genresRes] = await Promise.all([
-          api.getSongs({ genre: selectedGenre || undefined, sort, limit: 100 }),
+          api.getSongs({ q: localQuery.trim() || undefined, genre: selectedGenre || undefined, sort, limit: 100 }),
           api.getGenres()
         ]);
         setSongs(songsRes.songs);
@@ -67,7 +68,7 @@ export default function LibraryScreen() {
   useEffect(() => {
     setLoading(true);
     loadData();
-  }, [section, sort, selectedGenre]);
+  }, [section, sort, selectedGenre, localQuery]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -126,6 +127,27 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Local Search Input (for Songs section) */}
+        {section === 'songs' && (
+          <View style={styles.localSearchBar}>
+            <Ionicons name="search" size={18} color={Colors.textMuted} />
+            <TextInput
+              style={styles.localSearchInput}
+              placeholder="Search library songs..."
+              placeholderTextColor={Colors.textMuted}
+              value={localQuery}
+              onChangeText={setLocalQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {localQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setLocalQuery('')}>
+                <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Genre Chips (for Songs section) */}
         {section === 'songs' && genres.length > 0 && (
@@ -378,6 +400,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 3,
     marginBottom: 8,
+  },
+  localSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 38,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    marginBottom: 8,
+    gap: 8,
+  },
+  localSearchInput: {
+    flex: 1,
+    color: Colors.textPrimary,
+    fontSize: 14,
   },
   segmentBtn: {
     flex: 1,

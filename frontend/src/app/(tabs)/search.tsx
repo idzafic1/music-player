@@ -11,10 +11,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { api, Song, OnlineSearchResult } from '../../services/api';
+import { api, Song, OnlineSearchResult, getApiBaseUrl } from '../../services/api';
 import { Colors } from '../../constants/theme';
-import { SongListItem } from '../../components/SongListItem';
 import { useSettingsStore } from '../../store/settingsStore';
+import { usePlayerStore } from '../../store/playerStore';
 
 function formatDuration(sec: number): string {
   const mins = Math.floor(sec / 60);
@@ -24,10 +24,9 @@ function formatDuration(sec: number): string {
 
 export default function SearchScreen() {
   const { isOnline } = useSettingsStore();
+  const { playSong } = usePlayerStore();
   const [query, setQuery] = useState('');
-  const [tab, setTab] = useState<'library' | 'online'>('library');
 
-  const [localResults, setLocalResults] = useState<Song[]>([]);
   const [onlineResults, setOnlineResults] = useState<OnlineSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
@@ -39,7 +38,6 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (!query.trim()) {
-      setLocalResults([]);
       setOnlineResults([]);
       return;
     }
@@ -49,13 +47,8 @@ export default function SearchScreen() {
     debounceTimeout.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        if (tab === 'library') {
-          const res = await api.getSongs({ q: query.trim(), limit: 30 });
-          setLocalResults(res.songs);
-        } else {
-          const res = await api.searchOnline(query.trim(), 15);
-          setOnlineResults(res);
-        }
+        const res = await api.searchOnline(query.trim(), 15);
+        setOnlineResults(res);
       } catch (err) {
         console.error('Search error:', err);
       } finally {
@@ -66,7 +59,30 @@ export default function SearchScreen() {
     return () => {
       if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
     };
-  }, [query, tab]);
+  }, [query]);
+
+  const handlePlayPreview = async (item: OnlineSearchResult) => {
+    const previewSong: Song = {
+      id: `online_${item.sourceId}`,
+      title: item.title,
+      artistId: null,
+      artistName: item.artistName,
+      durationSec: item.durationSec,
+      filePath: '',
+      thumbnailPath: null,
+      thumbnailUrl: item.thumbnailUrl,
+      streamUrl: `${getApiBaseUrl()}/api/search/online/stream?url=${encodeURIComponent(item.sourceUrl)}`,
+      source: 'online',
+      sourceId: item.sourceId,
+      sourceUrl: item.sourceUrl,
+      addedAt: Date.now(),
+      genres: [],
+      rating: null,
+      isFavorite: false,
+      playCount: 0,
+    };
+    await playSong(previewSong, undefined, 'online_preview');
+  };
 
   const handleDownloadOnline = async (item: OnlineSearchResult) => {
     setDownloadingIds(prev => new Set(prev).add(item.sourceId));
@@ -113,14 +129,14 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.title}>Search</Text>
+        <Text style={styles.title}>Search YouTube Music</Text>
 
         {/* Search Input */}
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color={Colors.textMuted} />
           <TextInput
             style={styles.input}
-            placeholder={tab === 'library' ? 'Search in Library...' : 'Search YouTube Music...'}
+            placeholder="Search YouTube Music..."
             placeholderTextColor={Colors.textMuted}
             value={query}
             onChangeText={setQuery}
@@ -133,37 +149,6 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
-
-        {/* Tab Toggle */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[styles.tabBtn, tab === 'library' && styles.tabBtnActive]}
-            onPress={() => setTab('library')}
-          >
-            <Ionicons
-              name="library"
-              size={16}
-              color={tab === 'library' ? '#FFFFFF' : Colors.textMuted}
-            />
-            <Text style={[styles.tabText, tab === 'library' && styles.tabTextActive]}>
-              Library
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, tab === 'online' && styles.tabBtnActive]}
-            onPress={() => setTab('online')}
-          >
-            <Ionicons
-              name="globe-outline"
-              size={16}
-              color={tab === 'online' ? '#FFFFFF' : Colors.textMuted}
-            />
-            <Text style={[styles.tabText, tab === 'online' && styles.tabTextActive]}>
-              YouTube Music
-            </Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
       {/* Results Content */}
@@ -174,32 +159,7 @@ export default function SearchScreen() {
           </View>
         )}
 
-        {!isSearching && tab === 'library' && (
-          <>
-            {query.trim().length > 0 && localResults.length === 0 ? (
-              <View style={styles.centerBox}>
-                <Ionicons name="search-outline" size={40} color={Colors.textMuted} />
-                <Text style={styles.emptyText}>No songs found in your library</Text>
-                <TouchableOpacity
-                  style={styles.switchTabBtn}
-                  onPress={() => setTab('online')}
-                >
-                  <Text style={styles.switchTabText}>Search on YouTube Music</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              localResults.map((song) => (
-                <SongListItem
-                  key={song.id}
-                  song={song}
-                  playlistContext={localResults}
-                />
-              ))
-            )}
-          </>
-        )}
-
-        {!isSearching && tab === 'online' && (
+        {!isSearching && (
           <>
             {!isOnline ? (
               <View style={styles.centerBox}>
@@ -221,25 +181,34 @@ export default function SearchScreen() {
 
                 return (
                   <View key={item.sourceId} style={styles.onlineItem}>
-                    <View style={styles.onlineThumb}>
-                      {item.thumbnailUrl ? (
-                        <Image source={{ uri: item.thumbnailUrl }} style={styles.art} />
-                      ) : (
-                        <Ionicons name="musical-note" size={20} color={Colors.textMuted} />
-                      )}
-                    </View>
+                    <TouchableOpacity
+                      style={styles.itemTouchable}
+                      onPress={() => handlePlayPreview(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.onlineThumb}>
+                        {item.thumbnailUrl ? (
+                          <Image source={{ uri: item.thumbnailUrl }} style={styles.art} />
+                        ) : (
+                          <Ionicons name="musical-note" size={20} color={Colors.textMuted} />
+                        )}
+                        <View style={styles.playOverlay}>
+                          <Ionicons name="play" size={16} color="#FFFFFF" />
+                        </View>
+                      </View>
 
-                    <View style={styles.onlineInfo}>
-                      <Text numberOfLines={1} style={styles.onlineTitle}>
-                        {item.title}
-                      </Text>
-                      <Text numberOfLines={1} style={styles.onlineArtist}>
-                        {item.artistName}
-                      </Text>
-                      <Text style={styles.onlineDuration}>
-                        {formatDuration(item.durationSec)}
-                      </Text>
-                    </View>
+                      <View style={styles.onlineInfo}>
+                        <Text numberOfLines={1} style={styles.onlineTitle}>
+                          {item.title}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.onlineArtist}>
+                          {item.artistName}
+                        </Text>
+                        <Text style={styles.onlineDuration}>
+                          {formatDuration(item.durationSec)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
 
                     <TouchableOpacity
                       style={[
@@ -307,34 +276,6 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: 15,
   },
-  tabsContainer: {
-    flexDirection: 'row',
-    marginTop: 12,
-    backgroundColor: Colors.surface,
-    borderRadius: 10,
-    padding: 3,
-  },
-  tabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
-  },
-  tabBtnActive: {
-    backgroundColor: Colors.primary,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.textMuted,
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
   content: {
     flex: 1,
     marginTop: 8,
@@ -357,20 +298,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  switchTabBtn: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-  },
-  switchTabText: {
-    color: Colors.primaryLight,
-    fontSize: 13,
-    fontWeight: '600',
-  },
   onlineItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -381,6 +308,11 @@ const styles = StyleSheet.create({
     marginVertical: 4,
     backgroundColor: Colors.surface,
   },
+  itemTouchable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   onlineThumb: {
     width: 48,
     height: 48,
@@ -389,10 +321,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceBorder,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
   art: {
     width: '100%',
     height: '100%',
+  },
+  playOverlay: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   onlineInfo: {
     flex: 1,
@@ -422,6 +363,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     gap: 4,
+    marginLeft: 8,
   },
   downloadBtnLoading: {
     backgroundColor: Colors.surfaceBorder,

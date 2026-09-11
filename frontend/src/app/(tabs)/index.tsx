@@ -6,7 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -29,6 +30,7 @@ export default function HomeScreen() {
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
 
   const loadData = async () => {
     try {
@@ -115,13 +117,21 @@ export default function HomeScreen() {
             <Text style={styles.greetingSubtitle}>Welcome back</Text>
             <Text style={styles.greetingTitle}>Your Music</Text>
           </View>
-          <TouchableOpacity
-            style={styles.importBtn}
-            onPress={() => router.push('/import')}
-          >
-            <Ionicons name="cloud-download-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.importBtnText}>Import</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={() => setIsMenuVisible(true)}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.importBtn}
+              onPress={() => router.push('/import')}
+            >
+              <Ionicons name="cloud-download-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.importBtnText}>Import</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {!isBackendConnected && (
@@ -242,6 +252,35 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Menu Modal */}
+      <Modal
+        visible={isMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuBackdrop}
+          activeOpacity={1}
+          onPress={() => setIsMenuVisible(false)}
+        >
+          <View style={styles.menuCard}>
+            <Text style={styles.menuTitle}>Menu</Text>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setIsMenuVisible(false);
+                router.push('/wrapped' as any);
+              }}
+            >
+              <Ionicons name="stats-chart-outline" size={22} color={Colors.primary} />
+              <Text style={styles.menuItemText}>Your Wrapped Stats</Text>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -286,10 +325,56 @@ const styles = StyleSheet.create({
     borderColor: Colors.surfaceBorder,
     gap: 6,
   },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
   importBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  menuCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    gap: 12,
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textPrimary,
   },
   banner: {
     flexDirection: 'row',
