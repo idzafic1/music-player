@@ -115,11 +115,12 @@ class NativeAudioEngine extends BaseAudioEngine {
 
   private async initPlayer() {
     if (this.isInitialized) return;
+    if (!TrackPlayer || !Capability) return;
     try {
       await TrackPlayer.setupPlayer();
       await TrackPlayer.updateOptions({
         android: {
-          appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
+          appKilledPlaybackBehavior: AppKilledPlaybackBehavior?.StopPlaybackAndRemoveNotification ?? 1,
         },
         capabilities: [
           Capability.Play,
@@ -127,19 +128,21 @@ class NativeAudioEngine extends BaseAudioEngine {
           Capability.SkipToNext,
           Capability.SkipToPrevious,
           Capability.SeekTo,
-        ],
-        compactCapabilities: [Capability.Play, Capability.Pause],
+        ].filter(Boolean),
+        compactCapabilities: [Capability.Play, Capability.Pause].filter(Boolean),
       });
       this.isInitialized = true;
 
-      TrackPlayer.addEventListener(Event.PlaybackState, (event) => {
-        const playing = event.state === State.Playing;
-        if (this.isEnginePlaying !== playing) {
-          this.isEnginePlaying = playing;
-          this.stateCallbacks.forEach(cb => cb(playing));
-          this.lastTickTime = playing ? Date.now() : 0;
-        }
-      });
+      if (Event?.PlaybackState && State?.Playing) {
+        TrackPlayer.addEventListener(Event.PlaybackState, (event) => {
+          const playing = event.state === State.Playing;
+          if (this.isEnginePlaying !== playing) {
+            this.isEnginePlaying = playing;
+            this.stateCallbacks.forEach(cb => cb(playing));
+            this.lastTickTime = playing ? Date.now() : 0;
+          }
+        });
+      }
 
       TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
         this.isEnginePlaying = false;
@@ -296,4 +299,4 @@ class WebAudioEngine extends BaseAudioEngine {
   }
 }
 
-export const audioEngine: IAudioEngine = Platform.OS === 'web' ? new WebAudioEngine() : new NativeAudioEngine();
+export const audioEngine: IAudioEngine = (Platform.OS === 'web' || !TrackPlayer || !Capability) ? new WebAudioEngine() : new NativeAudioEngine();

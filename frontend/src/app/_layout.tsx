@@ -10,7 +10,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useOfflineStore } from '../store/offlineStore';
 import NetInfo from '@react-native-community/netinfo';
 
-if (Platform.OS !== 'web') {
+if (Platform.OS !== 'web' && TrackPlayer && typeof TrackPlayer.registerPlaybackService === 'function') {
   try {
     TrackPlayer.registerPlaybackService(() => require('../services/service').default);
   } catch (e) {
