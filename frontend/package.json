@@ -34,6 +34,7 @@
     "react-native-track-player": "^4.1.2",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
+    "shaka-player": "^4.16.49",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

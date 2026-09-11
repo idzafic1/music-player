@@ -13,5 +13,8 @@
     "frontend:web": "npm --prefix frontend run web",
     "frontend:build": "npm --prefix frontend run build",
     "test": "npm --prefix backend test"
+  },
+  "dependencies": {
+    "shaka-player": "^4.16.49"
   }
 }

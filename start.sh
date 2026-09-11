@@ -66,19 +66,26 @@ else
   done
 fi
 
-# 4. Launch App on Emulator & Start Metro
-echo "--> Launching App on $ACTIVE_DEV..."
+# 4. Launch Native Standalone App on Emulator & Start Metro
+echo "--> Launching Standalone App on $ACTIVE_DEV..."
 cd "$PROJECT_ROOT/frontend"
 
-# Launch main activity if app is installed
-if "$ADB_BIN" -s "$ACTIVE_DEV" shell pm list packages | grep -q "com.spiki.personalmusic"; then
-  "$ADB_BIN" -s "$ACTIVE_DEV" shell am start -n com.spiki.personalmusic/.MainActivity > /dev/null 2>&1 || true
+# Ensure native APK is installed, or install built debug APK if missing
+if ! "$ADB_BIN" -s "$ACTIVE_DEV" shell pm list packages | grep -q "com.spiki.personalmusic"; then
+  if [ -f "$PROJECT_ROOT/frontend/android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+    echo "    Installing native debug APK onto emulator..."
+    "$ADB_BIN" -s "$ACTIVE_DEV" install -r "$PROJECT_ROOT/frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+  fi
 fi
 
-echo "--> Starting fresh Expo Metro dev server on port 8081..."
+# Launch standalone activity
+"$ADB_BIN" -s "$ACTIVE_DEV" shell am start -n com.spiki.personalmusic/.MainActivity > /dev/null 2>&1 || true
+
+echo "--> Starting fresh Metro bundler in Dev Client mode on port 8081..."
 echo "==============================================="
-echo " Press 'a' in the Metro terminal to re-open on Android if needed."
+echo " Opening in custom native build (com.spiki.personalmusic)."
+echo " Press 'a' in terminal to re-trigger Android launch."
 echo " Press Ctrl+C anytime to stop."
 echo "==============================================="
 
-npx expo start --clear --android
+npx expo start --dev-client --clear
