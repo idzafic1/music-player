@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
-import { Song, api, getFullStreamUrl, getFullThumbnailUrl } from './api';
+import TrackPlayer, { State, Event, Capability, AppKilledPlaybackBehavior, useProgress } from 'react-native-track-player';
+import { Howl } from 'howler';
+import { Song, api, getFullStreamUrl } from './api';
 
 export type ProgressCallback = (positionSec: number, durationSec: number) => void;
 export type StateCallback = (isPlaying: boolean) => void;
@@ -18,208 +20,51 @@ export interface IAudioEngine {
   getCurrentPosition(): number;
   getDuration(): number;
   isPlaying(): boolean;
+  _emitRemoteAction(action: 'next' | 'previous'): void;
 }
 
-class WebAudioEngine implements IAudioEngine {
-  private audio: HTMLAudioElement | null = null;
-  private currentSong: Song | null = null;
-  private sourceContext = 'library';
+abstract class BaseAudioEngine implements IAudioEngine {
+  protected currentSong: Song | null = null;
+  protected sourceContext = 'library';
+  protected isEnginePlaying = false;
+  protected lastPositionSec = 0;
 
   // 15-second qualifying play timer tracking
-  private secondsAccumulated = 0;
-  private hasFiredPlay = false;
-  private lastTickTime = 0;
+  protected secondsAccumulated = 0;
+  protected hasFiredPlay = false;
+  protected lastTickTime = 0;
 
-  // Stall recovery tracking
-  private lastPositionSec = 0;
-  private stallCheckInterval: any = null;
-  private consecutiveStalls = 0;
+  protected progressCallbacks = new Set<ProgressCallback>();
+  protected stateCallbacks = new Set<StateCallback>();
+  protected endCallbacks = new Set<EndCallback>();
+  protected remoteActionCallbacks = new Set<RemoteActionCallback>();
 
-  private progressCallbacks = new Set<ProgressCallback>();
-  private stateCallbacks = new Set<StateCallback>();
-  private endCallbacks = new Set<EndCallback>();
-  private remoteActionCallbacks = new Set<RemoteActionCallback>();
-
-  constructor() {
-    if (typeof window !== 'undefined') {
-      this.audio = new Audio();
-      this.setupListeners();
-      this.setupStallDetection();
-    }
-  }
-
-  private setupListeners() {
-    if (!this.audio) return;
-
-    this.audio.addEventListener('timeupdate', () => {
-      if (!this.audio || !this.currentSong) return;
-      const pos = this.audio.currentTime || 0;
-      const dur = this.audio.duration || this.currentSong.durationSec || 0;
-      this.lastPositionSec = pos;
-      this.consecutiveStalls = 0;
-
-      // Track accumulated listening time for 15-second qualifying play
-      const now = Date.now();
-      if (this.lastTickTime > 0 && !this.audio.paused) {
-        const deltaSec = (now - this.lastTickTime) / 1000;
-        if (deltaSec > 0 && deltaSec < 2) {
-          this.secondsAccumulated += deltaSec;
-        }
-      }
-      this.lastTickTime = now;
-
-      // Fire 15-second play threshold
-      if (this.secondsAccumulated >= 15 && !this.hasFiredPlay) {
-        this.hasFiredPlay = true;
-        api.recordPlay(
-          this.currentSong.id,
-          Math.round(this.secondsAccumulated),
-          this.sourceContext
-        ).catch((err) => {
-          console.warn('Failed to record qualifying play:', err);
-        });
-      }
-
-      this.progressCallbacks.forEach(cb => cb(pos, dur));
-    });
-
-    this.audio.addEventListener('play', () => {
-      this.lastTickTime = Date.now();
-      this.stateCallbacks.forEach(cb => cb(true));
-      this.updateMediaSessionState('playing');
-    });
-
-    this.audio.addEventListener('pause', () => {
-      this.lastTickTime = 0;
-      this.stateCallbacks.forEach(cb => cb(false));
-      this.updateMediaSessionState('paused');
-    });
-
-    this.audio.addEventListener('ended', () => {
-      this.lastTickTime = 0;
-      this.stateCallbacks.forEach(cb => cb(false));
-      this.updateMediaSessionState('none');
-      this.endCallbacks.forEach(cb => cb());
-    });
-
-    this.audio.addEventListener('error', (e) => {
-      console.warn('Audio element error, attempting auto-recovery...', e);
-      this.attemptRecovery();
-    });
-  }
-
-  private setupStallDetection() {
-    if (typeof window === 'undefined') return;
-    this.stallCheckInterval = setInterval(() => {
-      if (!this.audio || this.audio.paused || !this.currentSong) return;
-      // If playing but position hasn't changed across checks
-      const currentPos = this.audio.currentTime || 0;
-      if (currentPos > 0 && currentPos === this.lastPositionSec && this.audio.readyState < 3) {
-        this.consecutiveStalls++;
-        if (this.consecutiveStalls >= 2) {
-          console.warn('Playback stall detected (>3s with no progress). Recovering stream...');
-          this.attemptRecovery();
-        }
-      } else {
-        this.consecutiveStalls = 0;
-      }
-      this.lastPositionSec = currentPos;
-    }, 2000);
-  }
-
-  private attemptRecovery() {
-    if (!this.audio || !this.currentSong) return;
-    const resumePos = this.audio.currentTime || 0;
-    try {
-      this.audio.load();
-      this.audio.currentTime = resumePos;
-      this.audio.play().catch(err => console.warn('Recovery play failed:', err));
-    } catch (err) {
-      console.error('Audio recovery exception:', err);
-    }
-  }
-
-  private updateMediaSession() {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !this.currentSong) return;
-    try {
-      const thumb = getFullThumbnailUrl(this.currentSong.thumbnailUrl || this.currentSong.thumbnailPath);
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: this.currentSong.title,
-        artist: this.currentSong.artistName || 'Unknown Artist',
-        album: 'Personal Library',
-        artwork: thumb ? [{ src: thumb, sizes: '512x512', type: 'image/jpeg' }] : []
-      });
-
-      navigator.mediaSession.setActionHandler('play', () => this.play());
-      navigator.mediaSession.setActionHandler('pause', () => this.pause());
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) {
-          this.seek(details.seekTime);
-        }
-      });
-      navigator.mediaSession.setActionHandler('previoustrack', () => {
-        this.remoteActionCallbacks.forEach(cb => cb('previous'));
-      });
-      navigator.mediaSession.setActionHandler('nexttrack', () => {
-        this.remoteActionCallbacks.forEach(cb => cb('next'));
-      });
-    } catch {
-      // Ignore media session errors in environments without full support
-    }
-  }
-
-  private updateMediaSessionState(state: 'playing' | 'paused' | 'none') {
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = state;
-    }
-  }
-
-  async load(song: Song, sourceContext = 'library'): Promise<void> {
-    if (!this.audio) {
-      if (typeof window !== 'undefined') {
-        this.audio = new Audio();
-        this.setupListeners();
-      } else {
-        return;
+  protected checkQualifyingPlay(isPlaying: boolean, positionSec: number) {
+    const now = Date.now();
+    if (this.lastTickTime > 0 && isPlaying) {
+      const deltaSec = (now - this.lastTickTime) / 1000;
+      if (deltaSec > 0 && deltaSec < 2) {
+        this.secondsAccumulated += deltaSec;
       }
     }
+    this.lastTickTime = isPlaying ? now : 0;
 
-    this.currentSong = song;
-    this.sourceContext = sourceContext;
-
-    // Reset 15s qualifying play tracking
-    this.secondsAccumulated = 0;
-    this.hasFiredPlay = false;
-    this.lastTickTime = 0;
-    this.consecutiveStalls = 0;
-
-    const streamUrl = getFullStreamUrl(song.id);
-    this.audio.src = streamUrl;
-    this.audio.load();
-    this.updateMediaSession();
-  }
-
-  async play(): Promise<void> {
-    if (!this.audio) return;
-    try {
-      this.lastTickTime = Date.now();
-      await this.audio.play();
-    } catch (err) {
-      console.warn('Playback error:', err);
+    if (this.secondsAccumulated >= 15 && !this.hasFiredPlay && this.currentSong) {
+      this.hasFiredPlay = true;
+      api.recordPlay(
+        this.currentSong.id,
+        Math.round(this.secondsAccumulated),
+        this.sourceContext
+      ).catch((err) => {
+        console.warn('Failed to record qualifying play:', err);
+      });
     }
   }
 
-  async pause(): Promise<void> {
-    if (!this.audio) return;
-    this.audio.pause();
-    this.lastTickTime = 0;
-  }
-
-  async seek(positionSec: number): Promise<void> {
-    if (!this.audio) return;
-    this.audio.currentTime = positionSec;
-    this.lastTickTime = Date.now();
-  }
+  abstract load(song: Song, sourceContext?: string): Promise<void>;
+  abstract play(): Promise<void>;
+  abstract pause(): Promise<void>;
+  abstract seek(positionSec: number): Promise<void>;
 
   onProgress(cb: ProgressCallback): () => void {
     this.progressCallbacks.add(cb);
@@ -242,16 +87,206 @@ class WebAudioEngine implements IAudioEngine {
   }
 
   getCurrentPosition(): number {
-    return this.audio?.currentTime || 0;
+    return this.lastPositionSec;
   }
 
   getDuration(): number {
-    return this.audio?.duration || this.currentSong?.durationSec || 0;
+    return this.currentSong?.durationSec || 0;
   }
 
   isPlaying(): boolean {
-    return !!this.audio && !this.audio.paused;
+    return this.isEnginePlaying;
+  }
+
+  _emitRemoteAction(action: 'next' | 'previous') {
+    this.remoteActionCallbacks.forEach(cb => cb(action));
   }
 }
 
-export const audioEngine: IAudioEngine = new WebAudioEngine();
+class NativeAudioEngine extends BaseAudioEngine {
+  private isInitialized = false;
+  private progressInterval: any = null;
+
+  constructor() {
+    super();
+    this.initPlayer();
+  }
+
+  private async initPlayer() {
+    if (this.isInitialized) return;
+    try {
+      await TrackPlayer.setupPlayer();
+      await TrackPlayer.updateOptions({
+        android: {
+          appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
+        },
+        capabilities: [
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
+          Capability.SeekTo,
+        ],
+        compactCapabilities: [Capability.Play, Capability.Pause],
+      });
+      this.isInitialized = true;
+
+      TrackPlayer.addEventListener(Event.PlaybackState, (event) => {
+        const playing = event.state === State.Playing;
+        if (this.isEnginePlaying !== playing) {
+          this.isEnginePlaying = playing;
+          this.stateCallbacks.forEach(cb => cb(playing));
+          this.lastTickTime = playing ? Date.now() : 0;
+        }
+      });
+
+      TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+        this.isEnginePlaying = false;
+        this.endCallbacks.forEach(cb => cb());
+      });
+
+      TrackPlayer.addEventListener(Event.PlaybackTrackChanged, (event) => {
+        if (event.nextTrack == null) {
+          this.isEnginePlaying = false;
+          this.endCallbacks.forEach(cb => cb());
+        }
+      });
+
+      // Polling progress manually for consistent API with howler
+      this.progressInterval = setInterval(async () => {
+        if (!this.isInitialized) return;
+        try {
+          const position = await TrackPlayer.getPosition();
+          const duration = await TrackPlayer.getDuration();
+          this.lastPositionSec = position;
+          this.checkQualifyingPlay(this.isEnginePlaying, position);
+          this.progressCallbacks.forEach(cb => cb(position, duration));
+        } catch (e) {}
+      }, 250);
+
+    } catch (e) {
+      console.warn('TrackPlayer init error', e);
+    }
+  }
+
+  async load(song: Song, sourceContext = 'library'): Promise<void> {
+    await this.initPlayer();
+    this.currentSong = song;
+    this.sourceContext = sourceContext;
+    this.secondsAccumulated = 0;
+    this.hasFiredPlay = false;
+    this.lastTickTime = 0;
+    this.lastPositionSec = 0;
+    this.isEnginePlaying = false;
+
+    await TrackPlayer.reset();
+    await TrackPlayer.add({
+      id: song.id,
+      url: getFullStreamUrl(song.id),
+      title: song.title,
+      artist: song.artistName || 'Unknown Artist',
+    });
+    this.stateCallbacks.forEach(cb => cb(false));
+  }
+
+  async play(): Promise<void> {
+    await this.initPlayer();
+    this.lastTickTime = Date.now();
+    await TrackPlayer.play();
+  }
+
+  async pause(): Promise<void> {
+    await this.initPlayer();
+    this.lastTickTime = 0;
+    await TrackPlayer.pause();
+  }
+
+  async seek(positionSec: number): Promise<void> {
+    await this.initPlayer();
+    await TrackPlayer.seekTo(positionSec);
+    this.lastTickTime = Date.now();
+  }
+}
+
+class WebAudioEngine extends BaseAudioEngine {
+  private sound: Howl | null = null;
+  private progressInterval: number | null = null;
+
+  async load(song: Song, sourceContext = 'library'): Promise<void> {
+    this.currentSong = song;
+    this.sourceContext = sourceContext;
+    this.secondsAccumulated = 0;
+    this.hasFiredPlay = false;
+    this.lastTickTime = 0;
+    this.lastPositionSec = 0;
+    this.isEnginePlaying = false;
+
+    if (this.sound) {
+      this.sound.unload();
+      this.sound = null;
+    }
+
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = null;
+    }
+
+    this.sound = new Howl({
+      src: [getFullStreamUrl(song.id)],
+      html5: true,
+      onplay: () => {
+        this.isEnginePlaying = true;
+        this.lastTickTime = Date.now();
+        this.stateCallbacks.forEach(cb => cb(true));
+      },
+      onpause: () => {
+        this.isEnginePlaying = false;
+        this.lastTickTime = 0;
+        this.stateCallbacks.forEach(cb => cb(false));
+      },
+      onend: () => {
+        this.isEnginePlaying = false;
+        this.lastTickTime = 0;
+        this.stateCallbacks.forEach(cb => cb(false));
+        this.endCallbacks.forEach(cb => cb());
+      },
+      onstop: () => {
+        this.isEnginePlaying = false;
+        this.lastTickTime = 0;
+        this.stateCallbacks.forEach(cb => cb(false));
+      }
+    });
+
+    this.progressInterval = setInterval(() => {
+      if (!this.sound) return;
+      const position = this.sound.seek() as number;
+      const duration = this.sound.duration();
+      this.lastPositionSec = position;
+      this.checkQualifyingPlay(this.isEnginePlaying, position);
+      this.progressCallbacks.forEach(cb => cb(position, duration));
+    }, 250) as unknown as number;
+
+    this.stateCallbacks.forEach(cb => cb(false));
+  }
+
+  async play(): Promise<void> {
+    if (this.sound) {
+      this.sound.play();
+    }
+  }
+
+  async pause(): Promise<void> {
+    if (this.sound) {
+      this.sound.pause();
+    }
+  }
+
+  async seek(positionSec: number): Promise<void> {
+    if (this.sound) {
+      this.sound.seek(positionSec);
+      this.lastTickTime = Date.now();
+    }
+  }
+}
+
+export const audioEngine: IAudioEngine = Platform.OS === 'web' ? new WebAudioEngine() : new NativeAudioEngine();

@@ -6,15 +6,15 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  ScrollView,
-  SafeAreaView
+  ScrollView
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { usePlayerStore } from '../store/playerStore';
 import { getFullThumbnailUrl } from '../services/api';
 import { Colors, Spacing } from '../constants/theme';
-import { StarRating } from './StarRating';
+import { SongOptionsMenuModal } from './SongOptionsMenuModal';
 
 function formatTime(sec: number): string {
   if (isNaN(sec) || sec < 0) return '0:00';
@@ -42,11 +42,11 @@ export const FullPlayerModal: React.FC = () => {
     toggleShuffle,
     cycleRepeatMode,
     toggleFavorite,
-    setRating,
     playSong
   } = usePlayerStore();
 
   const [showQueue, setShowQueue] = useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
 
   if (!currentSong) return null;
 
@@ -153,7 +153,7 @@ export const FullPlayerModal: React.FC = () => {
               )}
             </View>
 
-            {/* Song Meta & Favorite */}
+            {/* Song Meta & Favorite / Options */}
             <View style={styles.metaRow}>
               <View style={styles.titleArtistContainer}>
                 <Text numberOfLines={1} style={styles.title}>
@@ -164,26 +164,27 @@ export const FullPlayerModal: React.FC = () => {
                 </Text>
               </View>
 
-              <TouchableOpacity
-                onPress={() => toggleFavorite(currentSong.id)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                style={styles.favBtn}
-              >
-                <Ionicons
-                  name={currentSong.isFavorite ? 'heart' : 'heart-outline'}
-                  size={28}
-                  color={currentSong.isFavorite ? Colors.favorite : Colors.textMuted}
-                />
-              </TouchableOpacity>
-            </View>
+              <View style={styles.actionIconGroup}>
+                <TouchableOpacity
+                  onPress={() => toggleFavorite(currentSong.id)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.favBtn}
+                >
+                  <Ionicons
+                    name={currentSong.isFavorite ? 'heart' : 'heart-outline'}
+                    size={28}
+                    color={currentSong.isFavorite ? Colors.favorite : Colors.textMuted}
+                  />
+                </TouchableOpacity>
 
-            {/* Rating Stars Row */}
-            <View style={styles.ratingRow}>
-              <StarRating
-                rating={currentSong.rating}
-                size={22}
-                onRate={(stars) => setRating(currentSong.id, stars)}
-              />
+                <TouchableOpacity
+                  onPress={() => setOptionsVisible(true)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.favBtn}
+                >
+                  <Ionicons name="ellipsis-vertical" size={24} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Scrub / Seek Bar */}
@@ -259,6 +260,12 @@ export const FullPlayerModal: React.FC = () => {
           </View>
         )}
       </SafeAreaView>
+
+      <SongOptionsMenuModal
+        visible={optionsVisible}
+        song={currentSong}
+        onClose={() => setOptionsVisible(false)}
+      />
     </Modal>
   );
 };
@@ -338,12 +345,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 4,
   },
+  actionIconGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   favBtn: {
     padding: 6,
-  },
-  ratingRow: {
-    alignItems: 'center',
-    marginVertical: 4,
   },
   scrubSection: {
     width: '100%',

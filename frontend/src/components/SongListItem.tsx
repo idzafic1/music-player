@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Song, getFullThumbnailUrl } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { Colors } from '../constants/theme';
-import { StarRating } from './StarRating';
+import { SongOptionsMenuModal } from './SongOptionsMenuModal';
 
 interface SongListItemProps {
   song: Song;
@@ -26,95 +26,95 @@ export const SongListItem: React.FC<SongListItemProps> = ({
   onAddToPlaylist,
   onDelete
 }) => {
-  const { currentSong, isPlaying, playSong, toggleFavorite, setRating } = usePlayerStore();
+  const { currentSong, isPlaying, playSong, toggleFavorite } = usePlayerStore();
+  const [optionsVisible, setOptionsVisible] = useState(false);
   const isCurrent = currentSong?.id === song.id;
   const thumbUrl = getFullThumbnailUrl(song.thumbnailUrl || song.thumbnailPath);
 
   return (
-    <TouchableOpacity
-      style={[styles.container, isCurrent && styles.containerCurrent]}
-      onPress={() => playSong(song, playlistContext)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.artContainer}>
-        {thumbUrl ? (
-          <Image
-            source={{ uri: thumbUrl }}
-            style={styles.art}
-            contentFit="cover"
-            transition={200}
-          />
-        ) : (
-          <View style={styles.placeholderArt}>
-            <Ionicons name="musical-note" size={20} color={Colors.textMuted} />
-          </View>
-        )}
-        {isCurrent && (
-          <View style={styles.playingBadge}>
-            <Ionicons
-              name={isPlaying ? 'volume-high' : 'pause'}
-              size={14}
-              color="#FFFFFF"
+    <>
+      <TouchableOpacity
+        style={[styles.container, isCurrent && styles.containerCurrent]}
+        onPress={() => playSong(song, playlistContext)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.artContainer}>
+          {thumbUrl ? (
+            <Image
+              source={{ uri: thumbUrl }}
+              style={styles.art}
+              contentFit="cover"
+              transition={200}
             />
-          </View>
-        )}
-      </View>
-
-      <View style={styles.infoContainer}>
-        <Text
-          numberOfLines={1}
-          style={[styles.title, isCurrent && styles.titleCurrent]}
-        >
-          {song.title}
-        </Text>
-        <Text numberOfLines={1} style={styles.artist}>
-          {song.artistName || 'Unknown Artist'}
-        </Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.duration}>{formatDuration(song.durationSec)}</Text>
-          <View style={styles.dot} />
-          <StarRating
-            rating={song.rating}
-            size={12}
-            onRate={(stars) => setRating(song.id, stars)}
-          />
+          ) : (
+            <View style={styles.placeholderArt}>
+              <Ionicons name="musical-note" size={20} color={Colors.textMuted} />
+            </View>
+          )}
+          {isCurrent && (
+            <View style={styles.playingBadge}>
+              <Ionicons
+                name={isPlaying ? 'volume-high' : 'pause'}
+                size={14}
+                color="#FFFFFF"
+              />
+            </View>
+          )}
         </View>
-      </View>
 
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => toggleFavorite(song.id)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons
-            name={song.isFavorite ? 'heart' : 'heart-outline'}
-            size={20}
-            color={song.isFavorite ? Colors.favorite : Colors.textMuted}
-          />
-        </TouchableOpacity>
+        <View style={styles.infoContainer}>
+          <Text
+            numberOfLines={1}
+            style={[styles.title, isCurrent && styles.titleCurrent]}
+          >
+            {song.title}
+          </Text>
+          <Text numberOfLines={1} style={styles.artist}>
+            {song.artistName || 'Unknown Artist'}
+          </Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.duration}>{formatDuration(song.durationSec)}</Text>
+            {song.rating ? (
+              <>
+                <View style={styles.dot} />
+                <Ionicons name="star" size={11} color={Colors.star} style={{ marginRight: 2 }} />
+                <Text style={styles.ratingText}>{song.rating}</Text>
+              </>
+            ) : null}
+          </View>
+        </View>
 
-        {onAddToPlaylist && (
+        <View style={styles.actionsContainer}>
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => onAddToPlaylist(song)}
+            onPress={() => toggleFavorite(song.id)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="add-circle-outline" size={20} color={Colors.textMuted} />
+            <Ionicons
+              name={song.isFavorite ? 'heart' : 'heart-outline'}
+              size={20}
+              color={song.isFavorite ? Colors.favorite : Colors.textMuted}
+            />
           </TouchableOpacity>
-        )}
 
-        {onDelete && (
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => onDelete(song)}
+            onPress={() => setOptionsVisible(true)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+            <Ionicons name="ellipsis-vertical" size={18} color={Colors.textMuted} />
           </TouchableOpacity>
-        )}
-      </View>
-    </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+
+      <SongOptionsMenuModal
+        visible={optionsVisible}
+        song={song}
+        onClose={() => setOptionsVisible(false)}
+        onAddToPlaylist={onAddToPlaylist}
+        onDelete={onDelete}
+      />
+    </>
   );
 };
 
@@ -198,5 +198,10 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     padding: 4,
+  },
+  ratingText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
 });

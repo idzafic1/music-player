@@ -93,16 +93,18 @@ let currentApiToken = '';
 if (typeof window !== 'undefined' && window.location) {
   const hostname = window.location.hostname || 'localhost';
   currentBaseUrl = `http://${hostname}:3001`;
-  const savedBase = localStorage.getItem('music_player_api_base');
-  if (savedBase) currentBaseUrl = savedBase;
-  const savedToken = localStorage.getItem('music_player_api_token');
-  if (savedToken) currentApiToken = savedToken;
+  if (typeof globalThis !== 'undefined' && 'localStorage' in globalThis) {
+    const savedBase = localStorage.getItem('music_player_api_base');
+    if (savedBase) currentBaseUrl = savedBase;
+    const savedToken = localStorage.getItem('music_player_api_token');
+    if (savedToken) currentApiToken = savedToken;
+  }
 }
 
 export function setApiConfig(baseUrl: string, token = '') {
   currentBaseUrl = baseUrl.replace(/\/+$/, '');
   currentApiToken = token;
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof globalThis !== 'undefined' && 'localStorage' in globalThis) {
     localStorage.setItem('music_player_api_base', currentBaseUrl);
     localStorage.setItem('music_player_api_token', currentApiToken);
   }
@@ -143,18 +145,31 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${currentApiToken}`;
   }
 
-  const res = await fetch(url, { ...options, headers });
-  if (!res.ok) {
-    let errorData: any = {};
-    try {
-      errorData = await res.json();
-    } catch {
-      errorData = { message: res.statusText };
-    }
-    throw new Error(errorData.error?.message || errorData.message || `Request failed with ${res.status}`);
-  }
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.EXPO_PUBLIC_API_TIMEOUT_MS ?? 5000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  return res.json();
+  try {
+    const res = await fetch(url, { ...options, headers, signal: controller.signal });
+    if (!res.ok) {
+      let errorData: any = {};
+      try {
+        errorData = await res.json();
+      } catch {
+        errorData = { message: res.statusText };
+      }
+      throw new Error(errorData.error?.message || errorData.message || `Request failed with ${res.status}`);
+    }
+
+    return res.json();
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Request to ${url} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // API methods
