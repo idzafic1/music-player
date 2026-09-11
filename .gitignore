@@ -22,4 +22,7 @@ backend/data/thumbnails/*
 .DS_Store
 *.log
 /tmp/
+
+# Shell scripts
 *.sh
+**/*.sh
