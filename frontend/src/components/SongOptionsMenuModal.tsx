@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Song, getFullThumbnailUrl } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { Colors, Spacing } from '../constants/theme';
+import { useOfflineStore } from '../store/offlineStore';
 import { StarRating } from './StarRating';
 
 interface SongOptionsMenuModalProps {
@@ -30,6 +31,23 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
   onDelete,
 }) => {
   const { toggleFavorite, setRating } = usePlayerStore();
+  const { downloadedSongIds, downloadingIds, downloadProgress, download, remove } = useOfflineStore();
+  const songIsDownloaded = song ? downloadedSongIds.has(song.id) : false;
+  const songIsDownloading = song ? downloadingIds.has(song.id) : false;
+  const songProgress = song ? (downloadProgress[song.id] ?? 0) : 0;
+
+  const handleDownloadToggle = async () => {
+    if (!song) return;
+    try {
+      if (songIsDownloaded) {
+        await remove(song.id);
+      } else if (!songIsDownloading) {
+        await download(song);
+      }
+    } catch (err) {
+      console.warn('Download/remove failed:', err);
+    }
+  };
 
   if (!song) return null;
 
@@ -99,6 +117,26 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
 
               {/* Action Buttons */}
               <View style={styles.actionsList}>
+                {/* Download / Remove Download */}
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={handleDownloadToggle}
+                  disabled={songIsDownloading}
+                >
+                  <Ionicons
+                    name={songIsDownloaded ? 'cloud-done' : songIsDownloading ? 'cloud-download' : 'cloud-download-outline'}
+                    size={22}
+                    color={songIsDownloaded ? Colors.primary : songIsDownloading ? Colors.accent : Colors.primary}
+                  />
+                  <Text style={styles.actionText}>
+                    {songIsDownloading
+                      ? `Downloading… ${Math.round(songProgress * 100)}%`
+                      : songIsDownloaded
+                        ? 'Remove Download'
+                        : 'Download for Offline'}
+                  </Text>
+                </TouchableOpacity>
+
                 {onAddToPlaylist && (
                   <TouchableOpacity
                     style={styles.actionRow}

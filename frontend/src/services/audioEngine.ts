@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import TrackPlayer, { State, Event, Capability, AppKilledPlaybackBehavior, useProgress } from 'react-native-track-player';
 import { Howl } from 'howler';
 import { Song, api, getFullStreamUrl } from './api';
+import { getLocalUri } from './offlineStorage';
 
 export type ProgressCallback = (positionSec: number, durationSec: number) => void;
 export type StateCallback = (isPlaying: boolean) => void;
@@ -179,10 +180,13 @@ class NativeAudioEngine extends BaseAudioEngine {
     this.lastPositionSec = 0;
     this.isEnginePlaying = false;
 
+    const localUri = await getLocalUri(song.id);
+    const url = localUri || getFullStreamUrl(song.id);
+
     await TrackPlayer.reset();
     await TrackPlayer.add({
       id: song.id,
-      url: getFullStreamUrl(song.id),
+      url,
       title: song.title,
       artist: song.artistName || 'Unknown Artist',
     });
@@ -231,8 +235,11 @@ class WebAudioEngine extends BaseAudioEngine {
       this.progressInterval = null;
     }
 
+    const localUri = await getLocalUri(song.id);
+    const url = localUri || getFullStreamUrl(song.id);
+
     this.sound = new Howl({
-      src: [getFullStreamUrl(song.id)],
+      src: [url],
       html5: true,
       onplay: () => {
         this.isEnginePlaying = true;

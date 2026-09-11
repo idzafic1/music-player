@@ -17,12 +17,15 @@ import { api, Song, Artist, Playlist, Genre } from '../../services/api';
 import { Colors } from '../../constants/theme';
 import { SongListItem } from '../../components/SongListItem';
 import { GenreChips } from '../../components/GenreChips';
+import { useOfflineStore } from '../../store/offlineStore';
 
 export default function LibraryScreen() {
   const router = useRouter();
   const [section, setSection] = useState<'songs' | 'artists' | 'playlists'>('songs');
   const [sort, setSort] = useState<'added_at' | 'title' | 'play_count'>('added_at');
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+  const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
+  const downloadedSongIds = useOfflineStore((s) => s.downloadedSongIds);
 
   const [songs, setSongs] = useState<Song[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -148,6 +151,21 @@ export default function LibraryScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
+            <View style={{ width: 8 }} />
+            <TouchableOpacity
+              style={[styles.sortPill, showDownloadedOnly && styles.sortPillActive]}
+              onPress={() => setShowDownloadedOnly((v) => !v)}
+            >
+              <Ionicons
+                name={showDownloadedOnly ? 'cloud-done' : 'cloud-download-outline'}
+                size={12}
+                color={showDownloadedOnly ? Colors.primary : Colors.textSecondary}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.sortPillText, showDownloadedOnly && styles.sortPillTextActive]}>
+                Downloaded
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -169,25 +187,32 @@ export default function LibraryScreen() {
         ) : (
           <>
             {/* Songs List */}
-            {section === 'songs' && (
-              <>
-                {songs.length === 0 ? (
-                  <View style={styles.centerBox}>
-                    <Ionicons name="musical-notes-outline" size={44} color={Colors.textMuted} />
-                    <Text style={styles.emptyTitle}>No songs found</Text>
-                  </View>
-                ) : (
-                  songs.map((song) => (
-                    <SongListItem
-                      key={song.id}
-                      song={song}
-                      playlistContext={songs}
-                      onDelete={handleDeleteSong}
-                    />
-                  ))
-                )}
-              </>
-            )}
+            {section === 'songs' && (() => {
+              const displaySongs = showDownloadedOnly
+                ? songs.filter((s) => downloadedSongIds.has(s.id))
+                : songs;
+              return (
+                <>
+                  {displaySongs.length === 0 ? (
+                    <View style={styles.centerBox}>
+                      <Ionicons name={showDownloadedOnly ? 'cloud-download-outline' : 'musical-notes-outline'} size={44} color={Colors.textMuted} />
+                      <Text style={styles.emptyTitle}>
+                        {showDownloadedOnly ? 'No downloaded songs' : 'No songs found'}
+                      </Text>
+                    </View>
+                  ) : (
+                    displaySongs.map((song) => (
+                      <SongListItem
+                        key={song.id}
+                        song={song}
+                        playlistContext={displaySongs}
+                        onDelete={handleDeleteSong}
+                      />
+                    ))
+                  )}
+                </>
+              );
+            })()}
 
             {/* Artists List */}
             {section === 'artists' && (

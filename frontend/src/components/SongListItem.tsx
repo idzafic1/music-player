@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Song, getFullThumbnailUrl } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { Colors } from '../constants/theme';
+import { useOfflineStore } from '../store/offlineStore';
 import { SongOptionsMenuModal } from './SongOptionsMenuModal';
 
 interface SongListItemProps {
@@ -29,6 +30,7 @@ export const SongListItem: React.FC<SongListItemProps> = ({
   const { currentSong, isPlaying, playSong, toggleFavorite } = usePlayerStore();
   const [optionsVisible, setOptionsVisible] = useState(false);
   const isCurrent = currentSong?.id === song.id;
+  const isOfflineAvailable = useOfflineStore((s) => s.downloadedSongIds.has(song.id));
   const thumbUrl = getFullThumbnailUrl(song.thumbnailUrl || song.thumbnailPath);
 
   return (
@@ -81,6 +83,12 @@ export const SongListItem: React.FC<SongListItemProps> = ({
                 <Text style={styles.ratingText}>{song.rating}</Text>
               </>
             ) : null}
+            {isOfflineAvailable && (
+              <>
+                <View style={styles.dot} />
+                <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
+              </>
+            )}
           </View>
         </View>
 

@@ -87,8 +87,11 @@ plays (mini-player, full player, autoplay from a playlist):
   tap-to-rate without opening the player). Optimistic UI update on tap, `PUT
   /ratings/:songId`, revert on failure.
 
-## Offline-first playback caching (stretch goal, not v1)
+## Offline-first playback caching
 
-Full on-device audio caching (so playback works with zero backend connectivity)
-is out of scope for the initial build — see `TASKS_ROADMAP.md` Phase 8. v1 assumes
-the backend is reachable on the LAN whenever the app is used.
+This is core v1 functionality, not a stretch goal — see `docs/OFFLINE_DOWNLOADS.md`
+for the full spec (new `offlineStorage.ts` service, `offlineStore.ts` Zustand
+store, and the exact changes needed in `audioEngine.ts`). Any song the user has
+explicitly downloaded to-device must keep playing with zero backend
+connectivity; only streaming of non-downloaded songs and online search require
+the backend to be reachable.

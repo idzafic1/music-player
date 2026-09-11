@@ -7,6 +7,8 @@ import TrackPlayer from 'react-native-track-player';
 import { Colors } from '../constants/theme';
 import { FullPlayerModal } from '../components/FullPlayerModal';
 import { useSettingsStore } from '../store/settingsStore';
+import { useOfflineStore } from '../store/offlineStore';
+import NetInfo from '@react-native-community/netinfo';
 
 if (Platform.OS !== 'web') {
   try {
@@ -26,6 +28,9 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }, 1500);
 
+    // Hydrate offline store on startup
+    useOfflineStore.getState().hydrate().catch(() => {});
+
     checkBackendConnection()
       .catch(() => {})
       .finally(() => {
@@ -33,7 +38,15 @@ export default function RootLayout() {
         SplashScreen.hideAsync().catch(() => {});
       });
 
-    return () => clearTimeout(fallbackHideTimer);
+    // Wire NetInfo to drive isOnline state
+    const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+      useSettingsStore.getState().setOnline(state.isConnected ?? true);
+    });
+
+    return () => {
+      clearTimeout(fallbackHideTimer);
+      unsubscribeNetInfo();
+    };
   }, [checkBackendConnection]);
 
   return (
