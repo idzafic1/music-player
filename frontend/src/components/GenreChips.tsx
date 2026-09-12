@@ -1,7 +1,8 @@
 import React from 'react';
 import { ScrollView, TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Colors } from '../constants/theme';
-import { Genre } from '../services/api';
+import { Genre, getFullThumbnailUrl } from '../services/api';
 
 interface GenreChipsProps {
   genres: Genre[];
@@ -38,6 +39,9 @@ export const GenreChips: React.FC<GenreChipsProps> = ({
               style={[styles.chip, isSelected && styles.chipActive]}
               onPress={() => onSelectGenre(isSelected ? null : g.name)}
             >
+              {g.sampleThumbnailUrl && (
+                <Image source={{ uri: getFullThumbnailUrl(g.sampleThumbnailUrl) }} style={styles.chipThumb} />
+              )}
               <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
                 {g.name} ({g.songCount})
               </Text>
@@ -65,6 +69,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chipThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: 6,
   },
   chipActive: {
     backgroundColor: Colors.primary,

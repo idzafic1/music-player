@@ -367,13 +367,6 @@ export async function downloadSingleSong(target: string, existingJobId?: string)
           if (cat && cat !== 'Music') genresToInsert.push(cat);
         }
       }
-      if (Array.isArray(meta.tags)) {
-        for (const tag of meta.tags.slice(0, 5)) {
-          if (tag && tag.length < 25 && !tag.includes('http')) {
-            genresToInsert.push(tag);
-          }
-        }
-      }
       if (genresToInsert.length > 0) {
         setSongGenres(songId, genresToInsert);
       }

@@ -35,6 +35,7 @@ export interface Playlist {
   sourceUrl: string | null;
   createdAt: number;
   songCount: number;
+  sampleThumbnailUrl?: string | null;
   songs?: Song[];
 }
 
@@ -42,6 +43,7 @@ export interface Genre {
   id: string;
   name: string;
   songCount: number;
+  sampleThumbnailUrl: string | null;
 }
 
 export interface OnlineSearchResult {
@@ -226,6 +228,8 @@ export const api = {
     request<{ success: boolean; stars: null }>(`/api/ratings/${songId}`, { method: 'DELETE' }),
 
   getGenres: () => request<Genre[]>('/api/genres'),
+
+  getRecentlyPlayed: (limit = 10) => request<Song[]>(`/api/plays/recent?limit=${limit}`),
 
   recordPlay: (songId: string, secondsPlayed: number, sourceContext = 'library') =>
     request<any>('/api/plays', { method: 'POST', body: JSON.stringify({ songId, secondsPlayed, sourceContext }) }),

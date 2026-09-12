@@ -22,7 +22,7 @@ import { useOfflineStore } from '../../store/offlineStore';
 export default function LibraryScreen() {
   const router = useRouter();
   const [section, setSection] = useState<'songs' | 'artists' | 'playlists'>('songs');
-  const [sort, setSort] = useState<'added_at' | 'title' | 'play_count'>('added_at');
+  const [sort, setSort] = useState<'added_at' | 'title' | 'play_count' | null>('added_at');
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
   const [localQuery, setLocalQuery] = useState('');
@@ -45,7 +45,7 @@ export default function LibraryScreen() {
     try {
       if (section === 'songs') {
         const [songsRes, genresRes] = await Promise.all([
-          api.getSongs({ q: localQuery.trim() || undefined, genre: selectedGenre || undefined, sort, limit: 100 }),
+          api.getSongs({ q: localQuery.trim() || undefined, genre: selectedGenre || undefined, sort: sort || undefined, limit: 100 }),
           api.getGenres()
         ]);
         setSongs(songsRes.songs);
@@ -158,6 +158,25 @@ export default function LibraryScreen() {
           />
         )}
 
+        {/* Filter Row (for Songs section) */}
+        {section === 'songs' && (
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              style={[styles.filterPill, showDownloadedOnly && styles.filterPillActive]}
+              onPress={() => setShowDownloadedOnly((v) => !v)}
+            >
+              <Ionicons
+                name={showDownloadedOnly ? 'cloud-done' : 'cloud-download-outline'}
+                size={14}
+                color={showDownloadedOnly ? Colors.primary : Colors.textSecondary}
+              />
+              <Text style={[styles.filterPillText, showDownloadedOnly && styles.filterPillTextActive]}>
+                Downloaded only
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Sort Controls (for Songs section) */}
         {section === 'songs' && (
           <View style={styles.sortRow}>
@@ -166,28 +185,13 @@ export default function LibraryScreen() {
               <TouchableOpacity
                 key={st}
                 style={[styles.sortPill, sort === st && styles.sortPillActive]}
-                onPress={() => setSort(st)}
+                onPress={() => setSort(sort === st ? null : st)}
               >
                 <Text style={[styles.sortPillText, sort === st && styles.sortPillTextActive]}>
                   {st === 'added_at' ? 'Recent' : st === 'title' ? 'Title' : 'Most Played'}
                 </Text>
               </TouchableOpacity>
             ))}
-            <View style={{ width: 8 }} />
-            <TouchableOpacity
-              style={[styles.sortPill, showDownloadedOnly && styles.sortPillActive]}
-              onPress={() => setShowDownloadedOnly((v) => !v)}
-            >
-              <Ionicons
-                name={showDownloadedOnly ? 'cloud-done' : 'cloud-download-outline'}
-                size={12}
-                color={showDownloadedOnly ? Colors.primary : Colors.textSecondary}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[styles.sortPillText, showDownloadedOnly && styles.sortPillTextActive]}>
-                Downloaded
-              </Text>
-            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -440,6 +444,35 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: Colors.primary,
     fontWeight: '700',
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    gap: 6,
+  },
+  filterPillActive: {
+    backgroundColor: Colors.surfaceElevated,
+    borderColor: Colors.primary,
+  },
+  filterPillText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  filterPillTextActive: {
+    color: Colors.primary,
+    fontWeight: '600',
   },
   sortRow: {
     flexDirection: 'row',

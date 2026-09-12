@@ -1,9 +1,16 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/index.js';
-import { getSongById } from '../services/library.js';
+import { getSongById, getRecentlyPlayedSongs } from '../services/library.js';
 
 export async function playRoutes(fastify: FastifyInstance) {
+  // GET /api/plays/recent - get recently played songs
+  fastify.get('/api/plays/recent', async (request: FastifyRequest<{
+    Querystring: { limit?: string }
+  }>) => {
+    const limit = request.query.limit ? parseInt(request.query.limit, 10) : 10;
+    return getRecentlyPlayedSongs(Math.max(1, Math.min(limit, 50)));
+  });
   // POST /plays - record qualifying play
   fastify.post('/api/plays', async (request: FastifyRequest<{
     Body: {

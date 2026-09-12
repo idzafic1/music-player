@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { api, RecommendationItem, Song, getFullThumbnailUrl } from '../../services/api';
+import { api, RecommendationItem, Song, Playlist, getFullThumbnailUrl, getApiBaseUrl } from '../../services/api';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { Colors } from '../../constants/theme';
@@ -25,8 +25,9 @@ export default function HomeScreen() {
   const { isBackendConnected, checkBackendConnection } = useSettingsStore();
 
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [recentlyPlayed, setRecentlyPlayed] = useState<Song[]>([]);
   const [favorites, setFavorites] = useState<Song[]>([]);
-  const [recentSongs, setRecentSongs] = useState<Song[]>([]);
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -35,21 +36,46 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       await checkBackendConnection();
-      const [recs, favs, songsRes] = await Promise.allSettled([
+      const [recs, pls, recent, favs] = await Promise.allSettled([
         api.getDailyRecommendations(),
-        api.getFavorites(10),
-        api.getSongs({ sort: 'added_at', limit: 10 })
+        api.getPlaylists(),
+        api.getRecentlyPlayed(10),
+        api.getFavorites(5)
       ]);
 
       if (recs.status === 'fulfilled') setRecommendations(recs.value);
+      if (pls.status === 'fulfilled') setPlaylists(pls.value);
+      if (recent.status === 'fulfilled') setRecentlyPlayed(recent.value);
       if (favs.status === 'fulfilled') setFavorites(favs.value.songs);
-      if (songsRes.status === 'fulfilled') setRecentSongs(songsRes.value.songs);
     } catch (err) {
       console.error('Error loading home data:', err);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
+  };
+
+  const handlePlayRecommendation = (item: RecommendationItem) => {
+    const previewSong: Song = {
+      id: `preview-${item.sourceId}`,
+      title: item.title,
+      artistId: null,
+      artistName: item.artistName,
+      durationSec: 0,
+      filePath: '',
+      thumbnailPath: null,
+      thumbnailUrl: item.thumbnailUrl,
+      streamUrl: `${getApiBaseUrl()}/api/search/online/stream?url=${encodeURIComponent(item.sourceUrl)}`,
+      source: 'online',
+      sourceId: item.sourceId,
+      sourceUrl: item.sourceUrl,
+      addedAt: 0,
+      genres: [],
+      rating: null,
+      isFavorite: false,
+      playCount: 0,
+    };
+    playSong(previewSong, [], 'recommendation');
   };
 
   useEffect(() => {
@@ -166,47 +192,122 @@ export default function HomeScreen() {
                     const isDownloading = downloadingIds.has(item.sourceId);
                     return (
                       <View key={item.id || item.sourceId} style={styles.recCard}>
-                        <View style={styles.recThumbContainer}>
-                          {item.thumbnailUrl ? (
-                            <Image
-                              source={{ uri: item.thumbnailUrl }}
-                              style={styles.recThumb}
-                              contentFit="cover"
-                            />
-                          ) : (
-                            <View style={styles.placeholderThumb}>
-                              <Ionicons name="musical-note" size={24} color={Colors.textMuted} />
-                            </View>
-                          )}
-                          <TouchableOpacity
-                            style={[styles.downloadPill, isDownloading && styles.downloadPillActive]}
-                            disabled={isDownloading}
-                            onPress={() => handleDownloadRecommendation(item)}
-                          >
-                            {isDownloading ? (
-                              <ActivityIndicator size="small" color="#FFFFFF" />
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => handlePlayRecommendation(item)}
+                        >
+                          <View style={styles.recThumbContainer}>
+                            {item.thumbnailUrl ? (
+                              <Image
+                                source={{ uri: item.thumbnailUrl }}
+                                style={styles.recThumb}
+                                contentFit="cover"
+                              />
                             ) : (
-                              <>
-                                <Ionicons name="arrow-down" size={14} color="#FFFFFF" />
-                                <Text style={styles.downloadPillText}>Get</Text>
-                              </>
+                              <View style={styles.placeholderThumb}>
+                                <Ionicons name="musical-note" size={24} color={Colors.textMuted} />
+                              </View>
                             )}
-                          </TouchableOpacity>
-                        </View>
+                            <TouchableOpacity
+                              style={[styles.downloadPill, isDownloading && styles.downloadPillActive]}
+                              disabled={isDownloading}
+                              onPress={() => handleDownloadRecommendation(item)}
+                            >
+                              {isDownloading ? (
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                              ) : (
+                                <>
+                                  <Ionicons name="arrow-down" size={14} color="#FFFFFF" />
+                                  <Text style={styles.downloadPillText}>Get</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          </View>
 
-                        <Text numberOfLines={1} style={styles.recTitle}>
-                          {item.title}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.recArtist}>
-                          {item.artistName}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.recReason}>
-                          {item.reason}
-                        </Text>
+                          <Text numberOfLines={1} style={styles.recTitle}>
+                            {item.title}
+                          </Text>
+                          <Text numberOfLines={1} style={styles.recArtist}>
+                            {item.artistName}
+                          </Text>
+                          <Text numberOfLines={1} style={styles.recReason}>
+                            {item.reason}
+                          </Text>
+                        </TouchableOpacity>
                       </View>
                     );
                   })}
                 </ScrollView>
+              </View>
+            )}
+
+            {/* My Playlists */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>My Playlists</Text>
+              </View>
+              {playlists.length === 0 ? (
+                <View style={styles.emptyInlineContainer}>
+                  <TouchableOpacity
+                    style={styles.emptyInlineCard}
+                    onPress={() => router.push('/(tabs)/library')}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color={Colors.primary} />
+                    <Text style={styles.emptyInlineText}>Create a playlist in Library</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recsScroll}
+                >
+                  {playlists.map((pl) => {
+                    const thumb = pl.sampleThumbnailUrl ? getFullThumbnailUrl(pl.sampleThumbnailUrl) : null;
+                    return (
+                      <TouchableOpacity
+                        key={pl.id}
+                        style={styles.playlistCard}
+                        activeOpacity={0.8}
+                        onPress={() => router.push(`/playlist/${pl.id}` as any)}
+                      >
+                        <View style={styles.playlistThumbContainer}>
+                          {thumb ? (
+                            <Image
+                              source={{ uri: thumb }}
+                              style={styles.playlistThumb}
+                              contentFit="cover"
+                            />
+                          ) : (
+                            <Ionicons name="musical-notes" size={32} color={Colors.accent} />
+                          )}
+                        </View>
+                        <Text numberOfLines={1} style={styles.playlistCardTitle}>
+                          {pl.name}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.playlistCardCount}>
+                          {pl.songCount} {pl.songCount === 1 ? 'song' : 'songs'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Recently Played */}
+            {recentlyPlayed.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Recently Played</Text>
+                </View>
+                {recentlyPlayed.map((song) => (
+                  <SongListItem
+                    key={`recent-${song.id}`}
+                    song={song}
+                    playlistContext={recentlyPlayed}
+                  />
+                ))}
               </View>
             )}
 
@@ -225,30 +326,6 @@ export default function HomeScreen() {
                 ))}
               </View>
             )}
-
-            {/* Recently Added */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Recently Added</Text>
-              </View>
-              {recentSongs.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Ionicons name="disc-outline" size={48} color={Colors.textMuted} />
-                  <Text style={styles.emptyStateTitle}>Your library is empty</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Tap "Import" above or search YouTube to download songs.
-                  </Text>
-                </View>
-              ) : (
-                recentSongs.map((song) => (
-                  <SongListItem
-                    key={song.id}
-                    song={song}
-                    playlistContext={recentSongs}
-                  />
-                ))
-              )}
-            </View>
           </>
         )}
       </ScrollView>
@@ -504,5 +581,55 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
+  },
+  playlistCard: {
+    width: 140,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  playlistThumbContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(6, 182, 212, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  playlistThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  playlistCardTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  playlistCardCount: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  emptyInlineContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  emptyInlineCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    gap: 10,
+  },
+  emptyInlineText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
   },
 });

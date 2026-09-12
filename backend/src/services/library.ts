@@ -303,16 +303,61 @@ export function getArtistById(id: string): { artist: { id: string; name: string;
 }
 
 // Genres
-export function listGenres(): { id: string; name: string; songCount: number }[] {
+export function listGenres(): { id: string; name: string; songCount: number; sampleThumbnailUrl: string | null }[] {
   const db = getDb();
   const query = `
-    SELECT g.id, g.name, COUNT(sg.song_id) AS song_count
+    SELECT
+      g.id, g.name, COUNT(sg.song_id) AS song_count,
+      (
+        SELECT s.thumbnail_path FROM songs s
+        JOIN song_genres sg2 ON sg2.song_id = s.id
+        WHERE sg2.genre_id = g.id
+        ORDER BY s.added_at DESC LIMIT 1
+      ) AS sample_thumbnail_path
     FROM genres g
     LEFT JOIN song_genres sg ON sg.genre_id = g.id
     GROUP BY g.id
     ORDER BY song_count DESC, g.name ASC
   `;
-  return db.prepare(query).all() as any[];
+  const rows = db.prepare(query).all() as any[];
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    songCount: r.song_count,
+    sampleThumbnailUrl: r.sample_thumbnail_path ? `/thumbnails/${r.sample_thumbnail_path.split('/').pop()}` : null
+  }));
+}
+
+export function getRecentlyPlayedSongs(limit = 10): SongDetail[] {
+  const db = getDb();
+  const query = `
+    SELECT
+      s.*,
+      a.name AS artist_name,
+      r.stars AS rating_stars,
+      (f.song_id IS NOT NULL) AS is_favorite,
+      (SELECT COUNT(*) FROM plays p2 WHERE p2.song_id = s.id) AS play_count,
+      (
+        SELECT GROUP_CONCAT(g.name, ',')
+        FROM song_genres sg
+        JOIN genres g ON g.id = sg.genre_id
+        WHERE sg.song_id = s.id
+      ) AS genre_names,
+      lastPlay.last_played_at
+    FROM songs s
+    JOIN (
+      SELECT song_id, MAX(played_at) AS last_played_at
+      FROM plays
+      GROUP BY song_id
+    ) lastPlay ON lastPlay.song_id = s.id
+    LEFT JOIN artists a ON a.id = s.artist_id
+    LEFT JOIN ratings r ON r.song_id = s.id
+    LEFT JOIN favorites f ON f.song_id = s.id
+    ORDER BY lastPlay.last_played_at DESC
+    LIMIT ?
+  `;
+  const rows = db.prepare(query).all(limit);
+  return rows.map(formatSongRow);
 }
 
 // Favorites
@@ -391,6 +436,7 @@ export interface PlaylistDetail {
   sourceUrl: string | null;
   createdAt: number;
   songCount: number;
+  sampleThumbnailUrl?: string | null;
   songs?: SongDetail[];
 }
 
@@ -399,7 +445,13 @@ export function listPlaylists(): PlaylistDetail[] {
   const query = `
     SELECT 
       p.*,
-      COUNT(ps.song_id) AS song_count
+      COUNT(ps.song_id) AS song_count,
+      (
+        SELECT s.thumbnail_path FROM songs s
+        JOIN playlist_songs ps2 ON ps2.song_id = s.id
+        WHERE ps2.playlist_id = p.id
+        ORDER BY ps2.position ASC LIMIT 1
+      ) AS sample_thumbnail_path
     FROM playlists p
     LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id
     GROUP BY p.id
@@ -413,7 +465,8 @@ export function listPlaylists(): PlaylistDetail[] {
     source: r.source,
     sourceUrl: r.source_url,
     createdAt: r.created_at,
-    songCount: r.song_count
+    songCount: r.song_count,
+    sampleThumbnailUrl: r.sample_thumbnail_path ? `/thumbnails/${r.sample_thumbnail_path.split('/').pop()}` : null
   }));
 }
 

@@ -151,6 +151,13 @@ export const FullPlayerModal: React.FC = () => {
                   <Ionicons name="musical-notes" size={90} color={Colors.textMuted} />
                 </View>
               )}
+              <View style={styles.downloadBadge}>
+                <Ionicons
+                  name={currentSong.source === 'online' ? 'checkmark-circle-outline' : 'checkmark-circle'}
+                  size={22}
+                  color={currentSong.source === 'online' ? Colors.textMuted : Colors.primary}
+                />
+              </View>
             </View>
 
             {/* Song Meta & Favorite / Options */}
@@ -204,12 +211,6 @@ export const FullPlayerModal: React.FC = () => {
                 <Text style={styles.timeText}>{formatTime(positionSec)}</Text>
                 <Text style={styles.timeText}>{formatTime(totalDuration)}</Text>
               </View>
-
-              {currentSong.source === 'online' && (
-                <Text style={styles.livePreviewNotice}>
-                  Live preview — download to save & enable seeking
-                </Text>
-              )}
             </View>
 
             {/* Main Controls */}
@@ -399,12 +400,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
   },
-  livePreviewNotice: {
-    fontSize: 11,
-    color: Colors.accent,
-    textAlign: 'center',
-    marginTop: 6,
-    fontStyle: 'italic',
+  downloadBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    padding: 2,
   },
   controlsRow: {
     flexDirection: 'row',
