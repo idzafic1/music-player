@@ -3,8 +3,13 @@ import { listArtists, getArtistById } from '../services/library.js';
 
 export async function artistRoutes(fastify: FastifyInstance) {
   // GET /artists - list with song counts
-  fastify.get('/api/artists', async () => {
-    return listArtists();
+  fastify.get('/api/artists', async (request: FastifyRequest<{
+    Querystring: { limit?: string; offset?: string }
+  }>) => {
+    return listArtists(
+      request.query.limit ? parseInt(request.query.limit, 10) : 50,
+      request.query.offset ? parseInt(request.query.offset, 10) : 0
+    );
   });
 
   // GET /artists/:id - detail + their songs

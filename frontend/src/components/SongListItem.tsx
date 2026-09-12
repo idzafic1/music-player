@@ -129,13 +129,12 @@ export const SongListItem: React.FC<SongListItemProps> = ({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    height: 80,
     borderRadius: 12,
     marginHorizontal: 12,
     marginVertical: 4,
     backgroundColor: Colors.surface,
+    overflow: 'hidden',
   },
   containerCurrent: {
     backgroundColor: Colors.surfaceElevated,
@@ -143,12 +142,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   artContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    overflow: 'hidden',
+    width: 72,
+    height: '100%',
     position: 'relative',
     backgroundColor: Colors.surfaceBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   art: {
     width: '100%',
@@ -168,6 +167,7 @@ const styles = StyleSheet.create({
   infoContainer: {
     flex: 1,
     marginLeft: 12,
+    paddingVertical: 10,
     justifyContent: 'center',
   },
   title: {
@@ -203,6 +203,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingRight: 12,
   },
   actionBtn: {
     padding: 4,

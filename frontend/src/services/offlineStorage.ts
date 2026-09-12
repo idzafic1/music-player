@@ -7,13 +7,41 @@ const DOWNLOAD_DIR = FileSystem.documentDirectory + 'downloads/';
 
 type IndexEntry = { localUri: string; downloadedAt: number; sizeBytes: number };
 type Index = Record<string, IndexEntry>;
+let cachedIndex: Index | null = null;
 
 async function readIndex(): Promise<Index> {
+  if (cachedIndex) return cachedIndex;
   const raw = await AsyncStorage.getItem(INDEX_KEY);
-  return raw ? JSON.parse(raw) : {};
+  if (!raw) {
+    cachedIndex = {};
+    return cachedIndex;
+  }
+
+  let parsed: Index;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    await AsyncStorage.removeItem(INDEX_KEY);
+    cachedIndex = {};
+    return cachedIndex;
+  }
+
+  const validEntries = await Promise.all(
+    Object.entries(parsed).map(async ([songId, entry]) => {
+      const fileInfo = await FileSystem.getInfoAsync(entry.localUri);
+      return fileInfo.exists ? [songId, entry] as const : null;
+    })
+  );
+  const validIndex = Object.fromEntries(validEntries.filter(Boolean) as [string, IndexEntry][]);
+  if (Object.keys(validIndex).length !== Object.keys(parsed).length) {
+    await writeIndex(validIndex);
+  }
+  cachedIndex = validIndex;
+  return validIndex;
 }
 
 async function writeIndex(index: Index): Promise<void> {
+  cachedIndex = index;
   await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(index));
 }
 
@@ -30,20 +58,54 @@ export async function downloadSong(
 ): Promise<void> {
   await ensureDirExists();
   const localUri = DOWNLOAD_DIR + song.id + '.m4a';
+  let expectedBytes = 0;
+  let lastReportedAt = 0;
+  onProgress?.(0);
+
+  try {
+    const headResponse = await fetch(getFullStreamUrl(song.id), { method: 'HEAD' });
+    const contentLength = headResponse.headers.get('content-length');
+    expectedBytes = contentLength ? Number(contentLength) : 0;
+  } catch {
+    expectedBytes = 0;
+  }
+
+  const reportProgress = (pct: number) => {
+    const now = Date.now();
+    if (onProgress && Number.isFinite(pct) && (pct >= 1 || now - lastReportedAt >= 100)) {
+      lastReportedAt = now;
+      onProgress(Math.max(0, Math.min(1, pct)));
+    }
+  };
 
   const downloadResumable = FileSystem.createDownloadResumable(
     getFullStreamUrl(song.id),
     localUri,
     {},
     (progressEvent) => {
-      if (onProgress && progressEvent.totalBytesExpectedToWrite > 0) {
-        onProgress(progressEvent.totalBytesWritten / progressEvent.totalBytesExpectedToWrite);
+      if (progressEvent.totalBytesExpectedToWrite > 0) {
+        expectedBytes = progressEvent.totalBytesExpectedToWrite;
+        reportProgress(progressEvent.totalBytesWritten / expectedBytes);
       }
     }
   );
 
-  const result = await downloadResumable.downloadAsync();
+  const progressInterval = setInterval(async () => {
+    if (!expectedBytes) return;
+    const fileInfo = await FileSystem.getInfoAsync(localUri);
+    if (fileInfo.exists && 'size' in fileInfo) {
+      reportProgress(fileInfo.size / expectedBytes);
+    }
+  }, 200);
+
+  let result;
+  try {
+    result = await downloadResumable.downloadAsync();
+  } finally {
+    clearInterval(progressInterval);
+  }
   if (!result) throw new Error('Download failed: no result');
+  reportProgress(1);
 
   const fileInfo = await FileSystem.getInfoAsync(result.uri);
   const sizeBytes = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;

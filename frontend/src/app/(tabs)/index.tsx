@@ -35,11 +35,11 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      await checkBackendConnection();
+      checkBackendConnection();
       const [recs, pls, recent, favs] = await Promise.allSettled([
         api.getDailyRecommendations(),
         api.getPlaylists(),
-        api.getRecentlyPlayed(10),
+        api.getRecentlyPlayed(5),
         api.getFavorites(5)
       ]);
 
@@ -212,15 +212,11 @@ export default function HomeScreen() {
                               style={[styles.downloadPill, isDownloading && styles.downloadPillActive]}
                               disabled={isDownloading}
                               onPress={() => handleDownloadRecommendation(item)}
+                              accessibilityLabel={isDownloading ? 'Downloading' : 'Download recommendation'}
                             >
-                              {isDownloading ? (
-                                <ActivityIndicator size="small" color="#FFFFFF" />
-                              ) : (
-                                <>
-                                  <Ionicons name="arrow-down" size={14} color="#FFFFFF" />
-                                  <Text style={styles.downloadPillText}>Get</Text>
-                                </>
-                              )}
+                              {isDownloading
+                                ? <ActivityIndicator size="small" color="#FFFFFF" />
+                                : <Ionicons name="download-outline" size={16} color="#FFFFFF" />}
                             </TouchableOpacity>
                           </View>
 
@@ -502,15 +498,13 @@ const styles = StyleSheet.create({
     width: 140,
     backgroundColor: Colors.surface,
     borderRadius: 14,
-    padding: 10,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    overflow: 'hidden',
   },
   recThumbContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 10,
-    overflow: 'hidden',
+    width: '100%',
+    height: 140,
     position: 'relative',
     backgroundColor: Colors.surfaceBorder,
   },
@@ -529,41 +523,37 @@ const styles = StyleSheet.create({
     right: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 4,
+    width: 34,
+    height: 34,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
   },
   downloadPillActive: {
     backgroundColor: Colors.surfaceBorder,
-  },
-  downloadPillText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
   },
   recTitle: {
     fontSize: 13,
     fontWeight: '600',
     color: Colors.textPrimary,
     marginTop: 8,
+    paddingHorizontal: 10,
   },
   recArtist: {
     fontSize: 11,
     color: Colors.textSecondary,
     marginTop: 2,
+    paddingHorizontal: 10,
   },
   recReason: {
     fontSize: 10,
     color: Colors.primaryLight,
     marginTop: 4,
     fontStyle: 'italic',
+    paddingHorizontal: 10,
+    marginBottom: 10,
   },
   emptyState: {
     alignItems: 'center',
@@ -586,19 +576,16 @@ const styles = StyleSheet.create({
     width: 140,
     backgroundColor: Colors.surface,
     borderRadius: 14,
-    padding: 10,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    overflow: 'hidden',
   },
   playlistThumbContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 10,
-    overflow: 'hidden',
+    width: '100%',
+    height: 140,
     backgroundColor: 'rgba(6, 182, 212, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
   },
   playlistThumb: {
     width: '100%',
@@ -608,11 +595,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: Colors.textPrimary,
+    paddingHorizontal: 10,
+    marginTop: 8,
   },
   playlistCardCount: {
     fontSize: 11,
     color: Colors.textMuted,
     marginTop: 2,
+    paddingHorizontal: 10,
+    marginBottom: 10,
   },
   emptyInlineContainer: {
     paddingHorizontal: 20,

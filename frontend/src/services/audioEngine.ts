@@ -156,6 +156,15 @@ class NativeAudioEngine extends BaseAudioEngine {
         }
       });
 
+      const remoteDuckEvent = (Event as any).RemoteDuck;
+      if (remoteDuckEvent) {
+        TrackPlayer.addEventListener(remoteDuckEvent, (event: { paused?: boolean; permanent?: boolean }) => {
+          if (event.paused || event.permanent) {
+            this.pause();
+          }
+        });
+      }
+
       // Polling progress manually for consistent API with howler
       this.progressInterval = setInterval(async () => {
         if (!this.isInitialized) return;
@@ -226,6 +235,38 @@ class NativeAudioEngine extends BaseAudioEngine {
 class WebAudioEngine extends BaseAudioEngine {
   private sound: Howl | null = null;
   private progressInterval: number | null = null;
+  private lastObservedPosition = 0;
+  private stagnantSince = 0;
+  private recoveryInFlight = false;
+
+  private configureMediaSession(song: Song) {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: song.title,
+      artist: song.artistName || 'Unknown Artist',
+    });
+    navigator.mediaSession.setActionHandler('play', () => { this.play(); });
+    navigator.mediaSession.setActionHandler('pause', () => { this.pause(); });
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime !== undefined) this.seek(details.seekTime);
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', () => this._emitRemoteAction('previous'));
+    navigator.mediaSession.setActionHandler('nexttrack', () => this._emitRemoteAction('next'));
+  }
+
+  private recoverFromStall() {
+    if (!this.sound || this.recoveryInFlight) return;
+    this.recoveryInFlight = true;
+    const position = this.lastPositionSec;
+    const sound = this.sound;
+    sound.once('load', () => {
+      sound.seek(position);
+      this.recoveryInFlight = false;
+      sound.play();
+    });
+    sound.stop();
+    sound.load();
+  }
 
   async load(song: Song, sourceContext = 'library'): Promise<void> {
     this.currentSong = song;
@@ -235,6 +276,9 @@ class WebAudioEngine extends BaseAudioEngine {
     this.lastTickTime = 0;
     this.lastPositionSec = 0;
     this.isEnginePlaying = false;
+    this.lastObservedPosition = 0;
+    this.stagnantSince = 0;
+    this.recoveryInFlight = false;
 
     if (this.sound) {
       this.sound.unload();
@@ -264,11 +308,17 @@ class WebAudioEngine extends BaseAudioEngine {
         this.isEnginePlaying = true;
         this.lastTickTime = Date.now();
         this.stateCallbacks.forEach(cb => cb(true));
+        if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
       },
       onpause: () => {
         this.isEnginePlaying = false;
         this.lastTickTime = 0;
         this.stateCallbacks.forEach(cb => cb(false));
+        if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused';
+        }
       },
       onend: () => {
         this.isEnginePlaying = false;
@@ -282,11 +332,23 @@ class WebAudioEngine extends BaseAudioEngine {
         this.stateCallbacks.forEach(cb => cb(false));
       }
     });
+    this.configureMediaSession(song);
 
     this.progressInterval = setInterval(() => {
       if (!this.sound) return;
       const position = this.sound.seek() as number;
       const duration = this.sound.duration();
+      if (this.isEnginePlaying) {
+        if (Math.abs(position - this.lastObservedPosition) < 0.05) {
+          if (!this.stagnantSince) this.stagnantSince = Date.now();
+          if (Date.now() - this.stagnantSince > 3000) this.recoverFromStall();
+        } else {
+          this.stagnantSince = 0;
+        }
+      } else {
+        this.stagnantSince = 0;
+      }
+      this.lastObservedPosition = position;
       this.lastPositionSec = position;
       this.checkQualifyingPlay(this.isEnginePlaying, position);
       this.progressCallbacks.forEach(cb => cb(position, duration));

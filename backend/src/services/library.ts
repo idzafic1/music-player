@@ -117,7 +117,10 @@ export function listSongs(options: {
   offset?: number;
 }): { songs: SongDetail[]; total: number } {
   const db = getDb();
-  const limit = Math.max(1, Math.min(options.limit || 50, 200));
+  const requestedLimit = options.limit || 50;
+  const limit = options.sort === 'added_at'
+    ? Math.min(requestedLimit, 5)
+    : Math.max(1, Math.min(requestedLimit, 200));
   const offset = Math.max(0, options.offset || 0);
 
   let whereClauses: string[] = [];
@@ -236,8 +239,10 @@ export function deleteSong(id: string): boolean {
   return true;
 }
 
-export function listArtists(): { id: string; name: string; thumbnailPath: string | null; songCount: number }[] {
+export function listArtists(limit = 50, offset = 0): { id: string; name: string; thumbnailPath: string | null; songCount: number }[] {
   const db = getDb();
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  const safeOffset = Math.max(0, offset);
   const query = `
     SELECT 
       a.id, 
@@ -248,8 +253,9 @@ export function listArtists(): { id: string; name: string; thumbnailPath: string
     LEFT JOIN songs s ON s.artist_id = a.id
     GROUP BY a.id
     ORDER BY song_count DESC, a.name COLLATE NOCASE ASC
+    LIMIT ? OFFSET ?
   `;
-  const rows = db.prepare(query).all() as any[];
+  const rows = db.prepare(query).all(safeLimit, safeOffset) as any[];
   return rows.map(r => ({
     id: r.id,
     name: r.name,
@@ -303,8 +309,10 @@ export function getArtistById(id: string): { artist: { id: string; name: string;
 }
 
 // Genres
-export function listGenres(): { id: string; name: string; songCount: number; sampleThumbnailUrl: string | null }[] {
+export function listGenres(limit = 50, offset = 0): { id: string; name: string; songCount: number; sampleThumbnailUrl: string | null }[] {
   const db = getDb();
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  const safeOffset = Math.max(0, offset);
   const query = `
     SELECT
       g.id, g.name, COUNT(sg.song_id) AS song_count,
@@ -318,8 +326,9 @@ export function listGenres(): { id: string; name: string; songCount: number; sam
     LEFT JOIN song_genres sg ON sg.genre_id = g.id
     GROUP BY g.id
     ORDER BY song_count DESC, g.name ASC
+    LIMIT ? OFFSET ?
   `;
-  const rows = db.prepare(query).all() as any[];
+  const rows = db.prepare(query).all(safeLimit, safeOffset) as any[];
   return rows.map(r => ({
     id: r.id,
     name: r.name,
@@ -440,8 +449,10 @@ export interface PlaylistDetail {
   songs?: SongDetail[];
 }
 
-export function listPlaylists(): PlaylistDetail[] {
+export function listPlaylists(limit = 50, offset = 0): PlaylistDetail[] {
   const db = getDb();
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  const safeOffset = Math.max(0, offset);
   const query = `
     SELECT 
       p.*,
@@ -456,8 +467,9 @@ export function listPlaylists(): PlaylistDetail[] {
     LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id
     GROUP BY p.id
     ORDER BY p.created_at DESC
+    LIMIT ? OFFSET ?
   `;
-  const rows = db.prepare(query).all() as any[];
+  const rows = db.prepare(query).all(safeLimit, safeOffset) as any[];
   return rows.map(r => ({
     id: r.id,
     name: r.name,

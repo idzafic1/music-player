@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   Modal,
   StyleSheet,
   TouchableOpacity,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Alert
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,10 +32,16 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
   onDelete,
 }) => {
   const { toggleFavorite, setRating } = usePlayerStore();
-  const { downloadedSongIds, downloadingIds, downloadProgress, download, remove } = useOfflineStore();
+  const { downloadedSongIds, downloadingIds, downloadProgress, download, remove, lastError } = useOfflineStore();
   const songIsDownloaded = song ? downloadedSongIds.has(song.id) : false;
   const songIsDownloading = song ? downloadingIds.has(song.id) : false;
   const songProgress = song ? (downloadProgress[song.id] ?? 0) : 0;
+
+  useEffect(() => {
+    if (lastError && visible) {
+      Alert.alert('Offline download failed', lastError);
+    }
+  }, [lastError, visible]);
 
   const handleDownloadToggle = async () => {
     if (!song) return;
@@ -136,6 +143,13 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
                         : 'Download for Offline'}
                   </Text>
                 </TouchableOpacity>
+                {songIsDownloading && (
+                  <View style={styles.downloadProgressTrack}>
+                    <View
+                      style={[styles.downloadProgressFill, { width: `${Math.max(4, songProgress * 100)}%` }]}
+                    />
+                  </View>
+                )}
 
                 {onAddToPlaylist && (
                   <TouchableOpacity
@@ -271,6 +285,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textPrimary,
     marginLeft: 12,
+  },
+  downloadProgressTrack: {
+    height: 3,
+    marginHorizontal: 12,
+    marginTop: -4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    backgroundColor: Colors.surfaceBorder,
+  },
+  downloadProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
   },
   closeBtn: {
     marginTop: 16,

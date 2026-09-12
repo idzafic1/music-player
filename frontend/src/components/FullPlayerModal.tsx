@@ -15,6 +15,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { getFullThumbnailUrl } from '../services/api';
 import { Colors, Spacing } from '../constants/theme';
 import { SongOptionsMenuModal } from './SongOptionsMenuModal';
+import { useOfflineStore } from '../store/offlineStore';
 
 function formatTime(sec: number): string {
   if (isNaN(sec) || sec < 0) return '0:00';
@@ -47,6 +48,9 @@ export const FullPlayerModal: React.FC = () => {
 
   const [showQueue, setShowQueue] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
+  const isCurrentSongDownloaded = useOfflineStore((state) =>
+    currentSong ? state.downloadedSongIds.has(currentSong.id) : false
+  );
 
   if (!currentSong) return null;
 
@@ -153,9 +157,9 @@ export const FullPlayerModal: React.FC = () => {
               )}
               <View style={styles.downloadBadge}>
                 <Ionicons
-                  name={currentSong.source === 'online' ? 'checkmark-circle-outline' : 'checkmark-circle'}
-                  size={22}
-                  color={currentSong.source === 'online' ? Colors.textMuted : Colors.primary}
+                  name={isCurrentSongDownloaded ? 'cloud-done' : 'cloud-download-outline'}
+                  size={18}
+                  color={isCurrentSongDownloaded ? Colors.primary : Colors.textMuted}
                 />
               </View>
             </View>
@@ -402,11 +406,16 @@ const styles = StyleSheet.create({
   },
   downloadBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-    padding: 2,
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(11,13,19,0.78)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   controlsRow: {
     flexDirection: 'row',

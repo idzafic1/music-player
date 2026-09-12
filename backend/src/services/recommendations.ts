@@ -14,6 +14,22 @@ export interface RecommendationItem {
   generatedAt: number;
 }
 
+const MOOD_SEEDS = [
+  { name: 'melancholic', query: 'melancholic depressive atmospheric music playlist' },
+  { name: 'cheerful', query: 'cheerful uplifting happy music playlist' },
+  { name: 'calm', query: 'calm peaceful focus music playlist' },
+  { name: 'energetic', query: 'energetic workout music playlist' },
+];
+
+function moodForGenre(genre: string): { name: string; query: string } | null {
+  const value = genre.toLowerCase();
+  if (/sad|depress|melanch|emo|ambient|dark/.test(value)) return MOOD_SEEDS[0];
+  if (/happy|pop|dance|disco|funk|summer/.test(value)) return MOOD_SEEDS[1];
+  if (/chill|calm|sleep|lofi|classical|acoustic/.test(value)) return MOOD_SEEDS[2];
+  if (/rock|metal|punk|techno|edm|workout/.test(value)) return MOOD_SEEDS[3];
+  return null;
+}
+
 export function getDailyRecommendations(): RecommendationItem[] {
   const db = getDb();
   const rows = db.prepare(`
@@ -69,7 +85,18 @@ export async function refreshDailyRecommendations(): Promise<RecommendationItem[
     `).all() as { name: string }[];
   }
 
-  // 3. Top songs
+  // 3. Top genres and songs
+  const topGenres = db.prepare(`
+    SELECT g.name, COUNT(*) AS plays
+    FROM plays p
+    JOIN song_genres sg ON sg.song_id = p.song_id
+    JOIN genres g ON g.id = sg.genre_id
+    WHERE p.played_at >= ?
+    GROUP BY g.id
+    ORDER BY plays DESC
+    LIMIT 3
+  `).all(thirtyDaysAgo) as { name: string }[];
+
   const topSongs = db.prepare(`
     SELECT s.title, a.name AS artist_name, COUNT(*) AS plays
     FROM plays p
@@ -83,6 +110,30 @@ export async function refreshDailyRecommendations(): Promise<RecommendationItem[
 
   const gathered: { item: OnlineSearchResult; reason: string }[] = [];
   const seenIds = new Set<string>();
+  const moodSeeds = new Map<string, { name: string; query: string }>();
+  for (const genre of topGenres) {
+    const mood = moodForGenre(genre.name);
+    if (mood) moodSeeds.set(mood.name, mood);
+  }
+
+  if (moodSeeds.size === 0) {
+    moodSeeds.set('calm', MOOD_SEEDS[2]);
+    moodSeeds.set('energetic', MOOD_SEEDS[3]);
+  }
+
+  for (const mood of moodSeeds.values()) {
+    try {
+      const results = await search(mood.query, 4);
+      for (const res of results) {
+        if (!existingSourceIds.has(res.sourceId) && !seenIds.has(res.sourceId)) {
+          seenIds.add(res.sourceId);
+          gathered.push({ item: res, reason: `for a ${mood.name} mood` });
+        }
+      }
+    } catch {
+      // Continue on error
+    }
+  }
 
   // Gather recommendations for top artists
   for (const artist of topArtists) {
@@ -92,6 +143,21 @@ export async function refreshDailyRecommendations(): Promise<RecommendationItem[
         if (!existingSourceIds.has(res.sourceId) && !seenIds.has(res.sourceId)) {
           seenIds.add(res.sourceId);
           gathered.push({ item: res, reason: `because you listen to ${artist.name}` });
+        }
+      }
+    } catch {
+      // Continue on error
+    }
+  }
+
+  // Gather recommendations for the genres the listener plays most.
+  for (const genre of topGenres) {
+    try {
+      const results = await search(`${genre.name} music playlist`, 5);
+      for (const res of results) {
+        if (!existingSourceIds.has(res.sourceId) && !seenIds.has(res.sourceId)) {
+          seenIds.add(res.sourceId);
+          gathered.push({ item: res, reason: `because you listen to ${genre.name}` });
         }
       }
     } catch {
@@ -175,6 +241,10 @@ export async function getGenreRecommendations(genreName: string): Promise<{ sour
     query = `${sample.artist_name || ''} ${genreName} music`;
   }
 
+  const existingSourceIds = new Set(
+    (db.prepare('SELECT source_id FROM songs WHERE source_id IS NOT NULL').all() as { source_id: string }[])
+      .map(song => song.source_id)
+  );
   const results = await search(query, 15);
   return results.map(r => ({
     sourceId: r.sourceId,
@@ -183,7 +253,7 @@ export async function getGenreRecommendations(genreName: string): Promise<{ sour
     thumbnailUrl: r.thumbnailUrl,
     sourceUrl: r.sourceUrl,
     reason: `tagged: ${genreName}`
-  }));
+  })).filter(result => !existingSourceIds.has(result.sourceId));
 }
 
 export function initRecommendationsScheduler() {

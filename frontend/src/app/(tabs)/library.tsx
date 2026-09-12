@@ -26,6 +26,7 @@ export default function LibraryScreen() {
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [showDownloadedOnly, setShowDownloadedOnly] = useState(false);
   const [localQuery, setLocalQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const downloadedSongIds = useOfflineStore((s) => s.downloadedSongIds);
 
   const [songs, setSongs] = useState<Song[]>([]);
@@ -45,7 +46,7 @@ export default function LibraryScreen() {
     try {
       if (section === 'songs') {
         const [songsRes, genresRes] = await Promise.all([
-          api.getSongs({ q: localQuery.trim() || undefined, genre: selectedGenre || undefined, sort: sort || undefined, limit: 100 }),
+          api.getSongs({ q: debouncedQuery.trim() || undefined, genre: selectedGenre || undefined, sort: sort || undefined, limit: 100 }),
           api.getGenres()
         ]);
         setSongs(songsRes.songs);
@@ -66,9 +67,14 @@ export default function LibraryScreen() {
   };
 
   useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedQuery(localQuery), 250);
+    return () => clearTimeout(timeout);
+  }, [localQuery]);
+
+  useEffect(() => {
     setLoading(true);
     loadData();
-  }, [section, sort, selectedGenre, localQuery]);
+  }, [section, sort, selectedGenre, debouncedQuery]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);

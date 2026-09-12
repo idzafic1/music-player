@@ -125,11 +125,11 @@ export function getFullThumbnailUrl(urlOrPath: string | null): string | null {
   if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
     return urlOrPath;
   }
-  if (urlOrPath.startsWith('/thumbnails/')) {
-    return `${currentBaseUrl}${urlOrPath}`;
+  if (urlOrPath.startsWith('/')) {
+    const filename = urlOrPath.split('/').pop();
+    return filename ? `${currentBaseUrl}/thumbnails/${encodeURIComponent(filename)}` : null;
   }
-  const filename = urlOrPath.split('/').pop();
-  return `${currentBaseUrl}/thumbnails/${filename}`;
+  return `${currentBaseUrl}/thumbnails/${encodeURIComponent(urlOrPath)}`;
 }
 
 export function getFullStreamUrl(songId: string): string {

@@ -30,6 +30,12 @@
     },
     "web": {
       "output": "single",
+      "name": "Personal Music",
+      "shortName": "Personal Music",
+      "description": "A personal music library with offline playback",
+      "display": "standalone",
+      "themeColor": "#0B0D13",
+      "backgroundColor": "#0B0D13",
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro"
     },

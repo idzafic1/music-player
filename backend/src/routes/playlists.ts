@@ -11,8 +11,13 @@ import {
 
 export async function playlistRoutes(fastify: FastifyInstance) {
   // GET /playlists
-  fastify.get('/api/playlists', async () => {
-    return listPlaylists();
+  fastify.get('/api/playlists', async (request: FastifyRequest<{
+    Querystring: { limit?: string; offset?: string }
+  }>) => {
+    return listPlaylists(
+      request.query.limit ? parseInt(request.query.limit, 10) : 50,
+      request.query.offset ? parseInt(request.query.offset, 10) : 0
+    );
   });
 
   // POST /playlists

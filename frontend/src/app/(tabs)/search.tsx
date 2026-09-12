@@ -129,7 +129,7 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.title}>Search YouTube Music</Text>
+        <Text style={styles.title}>Search for music</Text>
 
         {/* Search Input */}
         <View style={styles.searchBar}>
@@ -300,24 +300,21 @@ const styles = StyleSheet.create({
   },
   onlineItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    height: 80,
     borderRadius: 12,
     marginHorizontal: 12,
     marginVertical: 4,
     backgroundColor: Colors.surface,
+    overflow: 'hidden',
   },
   itemTouchable: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
   onlineThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    overflow: 'hidden',
+    width: 72,
+    height: '100%',
     backgroundColor: Colors.surfaceBorder,
     justifyContent: 'center',
     alignItems: 'center',
@@ -338,6 +335,7 @@ const styles = StyleSheet.create({
   onlineInfo: {
     flex: 1,
     marginLeft: 12,
+    paddingVertical: 10,
     justifyContent: 'center',
   },
   onlineTitle: {
@@ -364,6 +362,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 4,
     marginLeft: 8,
+    marginVertical: 10,
+    marginRight: 12,
   },
   downloadBtnLoading: {
     backgroundColor: Colors.surfaceBorder,
