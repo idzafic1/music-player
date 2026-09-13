@@ -33,6 +33,14 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
 
+  const latestRecommendation = recommendations[0];
+  const activeMood = recommendations
+    .map((item) => item.reason.match(/^for a (.+) mood$/)?.[1])
+    .find(Boolean);
+  const recommendationSubtitle = latestRecommendation
+    ? `Refreshed ${new Date(latestRecommendation.generatedAt * 1000).toLocaleDateString()}${activeMood ? ` • ${activeMood} mood` : ''}`
+    : 'Handpicked for your taste';
+
   const loadData = async () => {
     try {
       checkBackendConnection();
@@ -180,7 +188,7 @@ export default function HomeScreen() {
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>Daily Recommendations</Text>
-                  <Text style={styles.sectionSubtitle}>Handpicked for your taste</Text>
+                  <Text style={styles.sectionSubtitle}>{recommendationSubtitle}</Text>
                 </View>
 
                 <ScrollView
