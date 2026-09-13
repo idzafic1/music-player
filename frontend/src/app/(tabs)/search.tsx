@@ -16,6 +16,13 @@ import { Colors } from '../../constants/theme';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePlayerStore } from '../../store/playerStore';
 
+const MOOD_CHIPS = [
+  { label: 'Calm', query: 'calm peaceful music' },
+  { label: 'Melancholic', query: 'melancholic atmospheric music' },
+  { label: 'Cheerful', query: 'cheerful uplifting music' },
+  { label: 'Energetic', query: 'energetic workout music' },
+] as const;
+
 function formatDuration(sec: number): string {
   const mins = Math.floor(sec / 60);
   const remSec = Math.floor(sec % 60);
@@ -26,6 +33,7 @@ export default function SearchScreen() {
   const { isOnline } = useSettingsStore();
   const { playSong } = usePlayerStore();
   const [query, setQuery] = useState('');
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
 
   const [onlineResults, setOnlineResults] = useState<OnlineSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -39,6 +47,7 @@ export default function SearchScreen() {
   useEffect(() => {
     if (!query.trim()) {
       setOnlineResults([]);
+      setSelectedMood(null);
       return;
     }
 
@@ -139,7 +148,10 @@ export default function SearchScreen() {
             placeholder="Search YouTube Music..."
             placeholderTextColor={Colors.textMuted}
             value={query}
-            onChangeText={setQuery}
+            onChangeText={(value) => {
+              setSelectedMood(null);
+              setQuery(value);
+            }}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -149,6 +161,38 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.moodChips}
+        >
+          {MOOD_CHIPS.map((mood) => {
+            const isSelected = selectedMood === mood.label;
+            return (
+              <TouchableOpacity
+                key={mood.label}
+                style={[styles.moodChip, isSelected && styles.moodChipSelected]}
+                disabled={!isOnline}
+                onPress={() => {
+                  setSelectedMood(isSelected ? null : mood.label);
+                  setQuery(isSelected ? '' : mood.query);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Search ${mood.label.toLowerCase()} music`}
+              >
+                <Ionicons
+                  name={isSelected ? 'checkmark' : 'sparkles-outline'}
+                  size={14}
+                  color={isSelected ? '#FFFFFF' : Colors.primaryLight}
+                />
+                <Text style={[styles.moodChipText, isSelected && styles.moodChipTextSelected]}>
+                  {mood.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* Results Content */}
@@ -270,6 +314,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     gap: 10,
+  },
+  moodChips: {
+    paddingTop: 10,
+    gap: 8,
+  },
+  moodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  moodChipSelected: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  moodChipText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  moodChipTextSelected: {
+    color: '#FFFFFF',
   },
   input: {
     flex: 1,
