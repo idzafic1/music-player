@@ -271,11 +271,18 @@ Do not collapse all of these into a generic spinner or a blank surface.
 
 All list APIs should accept `limit` and `offset`, with server-side clamps.
 
-Special product rule:
+Special product rule (corrected — see docs/AGENT_CONSTITUTION.md history):
 
-- A `sort=added_at` or Recent view must return no more than five songs for the
-  compact recent surface. This is a product limit, not a general library limit.
-- The full library may still support larger page sizes for other sorting modes.
+- The Library screen's own "Recent" sort (`sort=added_at` requested from the
+  Library UI) behaves like every other sort mode: normal server-side clamps,
+  up to 200 per page. A hard 5-item cap on this code path previously broke
+  ordinary library browsing and was reverted after being found and fixed —
+  do not reintroduce it here.
+- A compact "recently played" surface on Home is a SEPARATE, purpose-built
+  endpoint (`GET /api/plays/recent`, see docs/HOME_LIBRARY_POLISH.md) with its
+  own small limit (5-10, product's choice). It is not implemented by capping
+  the general `sort=added_at` path — those are two different code paths for
+  two different UI surfaces, and must stay that way.
 
 ### 7.3 Error shape
 
@@ -468,8 +475,9 @@ These are candidates, not automatic requirements:
 3. Storage management screen showing downloaded count and total bytes.
 4. Retry queue for failed device downloads.
 5. Server-unavailable mode that preserves the last successful library snapshot.
-6. Recently played as a fixed five-item surface with a separate full history view
-   only if the user asks for it.
+6. (Already implemented) Recently played as a fixed-size Home surface via its
+   own dedicated endpoint — separate from Library's normal, uncapped Recent
+   sort. Do not merge these two back into one code path.
 7. Download status on every relevant row, using one consistent visual language.
 8. Recommendation refresh timestamp and a small explanation of the active mood.
 9. Background refresh only when the device/network policy allows it.
@@ -551,7 +559,7 @@ Verify:
 3. Launch the app.
 4. Capture Home, Library, Search, and full-player screens.
 5. Play song A, then song B; confirm A retains artwork.
-6. Confirm recent view contains at most five rows.
+6. Confirm Home's Recently Played widget shows a small, bounded list (5-10), AND separately confirm Library's own Recent sort supports normal full browsing beyond that — these are two different screens and must be checked independently.
 7. Start a device download and observe at least one intermediate progress state.
 8. Disconnect network/backend and play the downloaded file.
 9. Attempt a non-downloaded song and confirm a visible failure state.
@@ -567,7 +575,7 @@ The product is ready for a release candidate when:
 - Playback survives normal interruptions and supports seek.
 - Exactly one qualifying play is recorded per listening instance.
 - The Home screen loads partial content without being blocked by health checks.
-- Recent surfaces are intentionally capped at five.
+- Home's Recently Played widget is intentionally small (5-10); Library's own Recent sort is NOT capped and supports full normal browsing like any other sort mode.
 - Thumbnails never disappear after song switching.
 - Offline downloads have truthful progress and durable local indexes.
 - Downloaded songs play without any backend connection.
