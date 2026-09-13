@@ -51,6 +51,9 @@ export const FullPlayerModal: React.FC = () => {
   const isCurrentSongDownloaded = useOfflineStore((state) =>
     currentSong ? state.downloadedSongIds.has(currentSong.id) : false
   );
+  const isCurrentSongDownloading = useOfflineStore((state) =>
+    currentSong ? state.downloadingIds.has(currentSong.id) : false
+  );
 
   if (!currentSong) return null;
 
@@ -157,9 +160,9 @@ export const FullPlayerModal: React.FC = () => {
               )}
               <View style={styles.downloadBadge}>
                 <Ionicons
-                  name={isCurrentSongDownloaded ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                  name={isCurrentSongDownloaded ? 'cloud-done' : isCurrentSongDownloading ? 'cloud-download' : 'cloud-download-outline'}
                   size={22}
-                  color={isCurrentSongDownloaded ? Colors.primary : Colors.textMuted}
+                  color={isCurrentSongDownloaded ? Colors.primary : isCurrentSongDownloading ? Colors.accent : Colors.textMuted}
                 />
               </View>
             </View>

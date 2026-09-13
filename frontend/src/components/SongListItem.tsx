@@ -31,6 +31,7 @@ export const SongListItem: React.FC<SongListItemProps> = ({
   const [optionsVisible, setOptionsVisible] = useState(false);
   const isCurrent = currentSong?.id === song.id;
   const isOfflineAvailable = useOfflineStore((s) => s.downloadedSongIds.has(song.id));
+  const isDownloading = useOfflineStore((s) => s.downloadingIds.has(song.id));
   const thumbUrl = getFullThumbnailUrl(song.thumbnailUrl || song.thumbnailPath);
 
   return (
@@ -83,10 +84,14 @@ export const SongListItem: React.FC<SongListItemProps> = ({
                 <Text style={styles.ratingText}>{song.rating}</Text>
               </>
             ) : null}
-            {isOfflineAvailable && (
+            {(isOfflineAvailable || isDownloading) && (
               <>
                 <View style={styles.dot} />
-                <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
+                <Ionicons
+                  name={isOfflineAvailable ? 'cloud-done' : 'cloud-download'}
+                  size={12}
+                  color={isOfflineAvailable ? Colors.primary : Colors.accent}
+                />
               </>
             )}
           </View>
