@@ -14,11 +14,13 @@ import { api, Playlist, Song } from '../../services/api';
 import { usePlayerStore } from '../../store/playerStore';
 import { Colors } from '../../constants/theme';
 import { SongListItem } from '../../components/SongListItem';
+import { useOfflineStore } from '../../store/offlineStore';
 
 export default function PlaylistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { playSong } = usePlayerStore();
+  const { playlistDownload, downloadPlaylist, cancelPlaylistDownload } = useOfflineStore();
 
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,15 @@ export default function PlaylistDetailScreen() {
   const handlePlayAll = () => {
     if (playlist?.songs && playlist.songs.length > 0) {
       playSong(playlist.songs[0], playlist.songs, `playlist:${playlist.id}`);
+    }
+  };
+
+  const handlePlaylistDownload = async () => {
+    if (!playlist?.songs) return;
+    try {
+      await downloadPlaylist(playlist.id, playlist.songs);
+    } catch (err) {
+      console.error('Failed to download playlist:', err);
     }
   };
 
@@ -128,6 +139,24 @@ export default function PlaylistDetailScreen() {
               >
                 <Ionicons name="play" size={20} color="#FFFFFF" />
                 <Text style={styles.playAllText}>Play All</Text>
+              </TouchableOpacity>
+            )}
+            {playlist.songs && playlist.songs.length > 0 && (
+              <TouchableOpacity
+                style={styles.downloadPlaylistBtn}
+                onPress={playlistDownload ? cancelPlaylistDownload : handlePlaylistDownload}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={playlistDownload?.cancelling ? 'hourglass-outline' : playlistDownload ? 'close-circle-outline' : 'cloud-download-outline'}
+                  size={18}
+                  color={playlistDownload ? Colors.textSecondary : Colors.accent}
+                />
+                <Text style={styles.downloadPlaylistText}>
+                  {playlistDownload
+                    ? `${playlistDownload.cancelling ? 'Cancelling' : 'Cancel'} ${playlistDownload.completed}/${playlistDownload.total} (${Math.round(playlistDownload.progress * 100)}%)`
+                    : 'Download all'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
@@ -266,6 +295,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  downloadPlaylistBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 18,
+  },
+  downloadPlaylistText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   listContainer: {
     marginTop: 8,

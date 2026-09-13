@@ -8,6 +8,7 @@ const DOWNLOAD_DIR = FileSystem.documentDirectory + 'downloads/';
 type IndexEntry = { localUri: string; downloadedAt: number; sizeBytes: number };
 type Index = Record<string, IndexEntry>;
 let cachedIndex: Index | null = null;
+const activeDownloads = new Map<string, { cancelAsync: () => Promise<unknown> }>();
 
 async function readIndex(): Promise<Index> {
   if (cachedIndex) return cachedIndex;
@@ -89,6 +90,7 @@ export async function downloadSong(
       }
     }
   );
+  activeDownloads.set(song.id, downloadResumable);
 
   const progressInterval = setInterval(async () => {
     if (!expectedBytes) return;
@@ -103,6 +105,7 @@ export async function downloadSong(
     result = await downloadResumable.downloadAsync();
   } finally {
     clearInterval(progressInterval);
+    activeDownloads.delete(song.id);
   }
   if (!result) throw new Error('Download failed: no result');
   reportProgress(1);
@@ -113,6 +116,14 @@ export async function downloadSong(
   const index = await readIndex();
   index[song.id] = { localUri: result.uri, downloadedAt: Date.now(), sizeBytes };
   await writeIndex(index);
+}
+
+export async function cancelDownload(songId: string): Promise<void> {
+  const download = activeDownloads.get(songId);
+  if (!download) return;
+
+  await download.cancelAsync();
+  await FileSystem.deleteAsync(DOWNLOAD_DIR + songId + '.m4a', { idempotent: true });
 }
 
 export async function deleteDownload(songId: string): Promise<void> {
