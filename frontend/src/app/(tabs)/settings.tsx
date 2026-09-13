@@ -70,6 +70,10 @@ export default function SettingsScreen() {
   };
 
   const handleManualRefreshRecs = async () => {
+    if (!isBackendConnected) {
+      setMessage({ text: 'Server unavailable. Recommendations cannot be refreshed.', type: 'error' });
+      return;
+    }
     setRefreshingRecs(true);
     setMessage(null);
     try {
@@ -198,8 +202,8 @@ export default function SettingsScreen() {
           </Text>
 
           <TouchableOpacity
-            style={[styles.actionBtn, styles.secondaryBtn]}
-            disabled={refreshingRecs}
+            style={[styles.actionBtn, styles.secondaryBtn, !isBackendConnected && styles.disabledBtn]}
+            disabled={refreshingRecs || !isBackendConnected}
             onPress={handleManualRefreshRecs}
           >
             {refreshingRecs ? (
@@ -211,6 +215,9 @@ export default function SettingsScreen() {
               </>
             )}
           </TouchableOpacity>
+          {!isBackendConnected && (
+            <Text style={styles.disabledHint}>Reconnect to refresh recommendations.</Text>
+          )}
         </View>
 
         {/* Offline Storage Card */}
@@ -396,6 +403,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     marginTop: 0,
+  },
+  disabledBtn: {
+    opacity: 0.45,
+  },
+  disabledHint: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    marginTop: 8,
   },
   actionBtnText: {
     color: '#FFFFFF',

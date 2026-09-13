@@ -15,6 +15,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { Colors, Spacing } from '../constants/theme';
 import { useOfflineStore } from '../store/offlineStore';
 import { StarRating } from './StarRating';
+import { useSettingsStore } from '../store/settingsStore';
 
 interface SongOptionsMenuModalProps {
   visible: boolean;
@@ -33,6 +34,7 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
 }) => {
   const { toggleFavorite, setRating } = usePlayerStore();
   const { downloadedSongIds, downloadingIds, downloadProgress, download, remove, lastError } = useOfflineStore();
+  const isBackendConnected = useSettingsStore((state) => state.isBackendConnected);
   const songIsDownloaded = song ? downloadedSongIds.has(song.id) : false;
   const songIsDownloading = song ? downloadingIds.has(song.id) : false;
   const songProgress = song ? (downloadProgress[song.id] ?? 0) : 0;
@@ -45,6 +47,10 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
 
   const handleDownloadToggle = async () => {
     if (!song) return;
+    if (!songIsDownloaded && !isBackendConnected) {
+      Alert.alert('Server Unavailable', 'This track is not downloaded. Reconnect before saving it for offline playback.');
+      return;
+    }
     try {
       if (songIsDownloaded) {
         await remove(song.id);
@@ -103,11 +109,11 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
                   </Text>
                 </View>
 
-                <TouchableOpacity onPress={handleToggleFav} style={styles.favBtn}>
+                <TouchableOpacity onPress={handleToggleFav} style={styles.favBtn} disabled={!isBackendConnected}>
                   <Ionicons
                     name={song.isFavorite ? 'heart' : 'heart-outline'}
                     size={26}
-                    color={song.isFavorite ? Colors.favorite : Colors.textMuted}
+                    color={!isBackendConnected ? Colors.surfaceBorder : song.isFavorite ? Colors.favorite : Colors.textMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -117,7 +123,7 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
               {/* Rating Section */}
               <View style={styles.ratingSection}>
                 <Text style={styles.sectionLabel}>Track Rating</Text>
-                <StarRating rating={song.rating} size={28} onRate={handleRate} />
+                <StarRating rating={song.rating} size={28} onRate={isBackendConnected ? handleRate : undefined} />
               </View>
 
               <View style={styles.divider} />
@@ -128,7 +134,7 @@ export const SongOptionsMenuModal: React.FC<SongOptionsMenuModalProps> = ({
                 <TouchableOpacity
                   style={styles.actionRow}
                   onPress={handleDownloadToggle}
-                  disabled={songIsDownloading}
+                  disabled={songIsDownloading || (!songIsDownloaded && !isBackendConnected)}
                 >
                   <Ionicons
                     name={songIsDownloaded ? 'cloud-done' : songIsDownloading ? 'cloud-download' : 'cloud-download-outline'}

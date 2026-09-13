@@ -4,6 +4,7 @@ import { Howl } from 'howler';
 import { Song, api, getFullStreamUrl, getApiBaseUrl } from './api';
 import { getLocalUri } from './offlineStorage';
 import { useSettingsStore } from '../store/settingsStore';
+import { QualifyingPlayTracker, resolvePlaybackUri } from './playbackLogic';
 
 export type ProgressCallback = (positionSec: number, durationSec: number) => void;
 export type StateCallback = (isPlaying: boolean) => void;
@@ -35,6 +36,7 @@ abstract class BaseAudioEngine implements IAudioEngine {
   protected secondsAccumulated = 0;
   protected hasFiredPlay = false;
   protected lastTickTime = 0;
+  protected qualifyingTracker = new QualifyingPlayTracker();
 
   protected progressCallbacks = new Set<ProgressCallback>();
   protected stateCallbacks = new Set<StateCallback>();
@@ -42,16 +44,8 @@ abstract class BaseAudioEngine implements IAudioEngine {
   protected remoteActionCallbacks = new Set<RemoteActionCallback>();
 
   protected checkQualifyingPlay(isPlaying: boolean, positionSec: number) {
-    const now = Date.now();
-    if (this.lastTickTime > 0 && isPlaying) {
-      const deltaSec = (now - this.lastTickTime) / 1000;
-      if (deltaSec > 0 && deltaSec < 2) {
-        this.secondsAccumulated += deltaSec;
-      }
-    }
-    this.lastTickTime = isPlaying ? now : 0;
-
-    if (this.secondsAccumulated >= 15 && !this.hasFiredPlay && this.currentSong) {
+    if (this.qualifyingTracker.tick(isPlaying, Date.now()) && this.currentSong) {
+      this.secondsAccumulated = 15;
       this.hasFiredPlay = true;
       api.recordPlay(
         this.currentSong.id,
@@ -189,6 +183,7 @@ class NativeAudioEngine extends BaseAudioEngine {
     this.sourceContext = sourceContext;
     this.secondsAccumulated = 0;
     this.hasFiredPlay = false;
+    this.qualifyingTracker.reset();
     this.lastTickTime = 0;
     this.lastPositionSec = 0;
     this.isEnginePlaying = false;
@@ -203,7 +198,7 @@ class NativeAudioEngine extends BaseAudioEngine {
       } else if (song.streamUrl?.startsWith('/')) {
         url = `${getApiBaseUrl()}${song.streamUrl}`;
       } else {
-        url = getFullStreamUrl(song.id);
+        url = resolvePlaybackUri(null, song.streamUrl, getApiBaseUrl(), song.id);
       }
     }
 
@@ -242,6 +237,7 @@ class WebAudioEngine extends BaseAudioEngine {
   private lastObservedPosition = 0;
   private stagnantSince = 0;
   private recoveryInFlight = false;
+  private callbackGeneration = 0;
 
   private configureMediaSession(song: Song) {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
@@ -273,10 +269,13 @@ class WebAudioEngine extends BaseAudioEngine {
   }
 
   async load(song: Song, sourceContext = 'library'): Promise<void> {
+    const generation = ++this.callbackGeneration;
+    const isCurrent = () => generation === this.callbackGeneration;
     this.currentSong = song;
     this.sourceContext = sourceContext;
     this.secondsAccumulated = 0;
     this.hasFiredPlay = false;
+    this.qualifyingTracker.reset();
     this.lastTickTime = 0;
     this.lastPositionSec = 0;
     this.isEnginePlaying = false;
@@ -304,7 +303,7 @@ class WebAudioEngine extends BaseAudioEngine {
       } else if (song.streamUrl?.startsWith('/')) {
         url = `${getApiBaseUrl()}${song.streamUrl}`;
       } else {
-        url = getFullStreamUrl(song.id);
+        url = resolvePlaybackUri(null, song.streamUrl, getApiBaseUrl(), song.id);
       }
     }
 
@@ -312,6 +311,7 @@ class WebAudioEngine extends BaseAudioEngine {
       src: [url],
       html5: true,
       onplay: () => {
+        if (!isCurrent()) return;
         this.isEnginePlaying = true;
         this.lastTickTime = Date.now();
         this.stateCallbacks.forEach(cb => cb(true));
@@ -320,6 +320,7 @@ class WebAudioEngine extends BaseAudioEngine {
         }
       },
       onpause: () => {
+        if (!isCurrent()) return;
         this.isEnginePlaying = false;
         this.lastTickTime = 0;
         this.stateCallbacks.forEach(cb => cb(false));
@@ -328,12 +329,14 @@ class WebAudioEngine extends BaseAudioEngine {
         }
       },
       onend: () => {
+        if (!isCurrent()) return;
         this.isEnginePlaying = false;
         this.lastTickTime = 0;
         this.stateCallbacks.forEach(cb => cb(false));
         this.endCallbacks.forEach(cb => cb());
       },
       onstop: () => {
+        if (!isCurrent()) return;
         this.isEnginePlaying = false;
         this.lastTickTime = 0;
         this.stateCallbacks.forEach(cb => cb(false));

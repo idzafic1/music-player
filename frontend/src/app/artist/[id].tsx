@@ -12,17 +12,21 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, Artist, Song } from '../../services/api';
 import { usePlayerStore } from '../../store/playerStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { Colors } from '../../constants/theme';
 import { SongListItem } from '../../components/SongListItem';
+import { getLibrarySnapshot, hydrateLibrarySnapshot, formatSnapshotDate } from '../../services/librarySnapshot';
 
 export default function ArtistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { playSong } = usePlayerStore();
+  const { isBackendConnected } = useSettingsStore();
 
   const [artist, setArtist] = useState<Artist | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -31,7 +35,18 @@ export default function ArtistDetailScreen() {
         setArtist(data.artist);
         setSongs(data.songs);
       })
-      .catch((err) => console.error('Failed to load artist:', err))
+      .catch(async (err) => {
+        console.warn('Failed to load artist from backend:', err);
+        const snapshot = getLibrarySnapshot() || await hydrateLibrarySnapshot();
+        const cachedArtist = snapshot?.artists.find((item) => item.id === id);
+        if (cachedArtist) {
+          setArtist(cachedArtist);
+          setSongs((snapshot?.songs || []).filter((song) =>
+            song.artistId === id || song.artistName === cachedArtist.name
+          ));
+          setSnapshotSavedAt(snapshot?.savedAt || null);
+        }
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -56,6 +71,16 @@ export default function ArtistDetailScreen() {
         </Text>
         <View style={{ width: 24 }} />
       </View>
+      {!isBackendConnected && artist && (
+        <View style={styles.snapshotBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color={Colors.star} />
+          <Text style={styles.snapshotBannerText}>
+            {snapshotSavedAt
+              ? `Showing library snapshot from ${formatSnapshotDate(snapshotSavedAt)} • Server unavailable`
+              : 'Server unavailable • Showing cached library data'}
+          </Text>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -182,5 +207,20 @@ const styles = StyleSheet.create({
   listContainer: {
     marginTop: 8,
     paddingBottom: 40,
+  },
+  snapshotBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  snapshotBannerText: {
+    flex: 1,
+    color: Colors.star,
+    fontSize: 12,
   },
 });

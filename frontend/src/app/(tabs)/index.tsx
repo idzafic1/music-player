@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   View,
   Text,
   ScrollView,
@@ -10,6 +11,7 @@ import {
   Modal,
   Alert
 } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +43,13 @@ export default function HomeScreen() {
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isSnapshotData, setIsSnapshotData] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
+  const appStateRef = useRef(AppState.currentState);
+  const netConnectedRef = useRef<boolean | null>(null);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const loadDataRef = useRef<((showRefreshIndicator?: boolean) => Promise<void>) | null>(null);
+  const foregroundRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollIntervalsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
+  const disposedRef = useRef(false);
 
   const latestRecommendation = recommendations[0];
   const activeMood = recommendations
@@ -50,7 +59,30 @@ export default function HomeScreen() {
     ? `Refreshed ${new Date(latestRecommendation.generatedAt * 1000).toLocaleDateString()}${activeMood ? ` • ${activeMood} mood` : ''}`
     : 'Handpicked for your taste';
 
-  const loadData = async () => {
+  const restoreSnapshot = async () => {
+    const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
+    if (!snapshot) return;
+    if (snapshot.recommendations) setRecommendations(snapshot.recommendations);
+    if (snapshot.playlists) setPlaylists(snapshot.playlists);
+    if (snapshot.recentlyPlayed) setRecentlyPlayed(snapshot.recentlyPlayed);
+    if (snapshot.favorites) setFavorites(snapshot.favorites);
+    setIsSnapshotData(true);
+    setSnapshotSavedAt(snapshot.savedAt);
+  };
+
+  const loadData = async (showRefreshIndicator = false) => {
+    // NetInfo is deliberately the gate here: this policy only retries while
+    // the app is foregrounded and the device reports an active connection.
+    if (appStateRef.current !== 'active' || netConnectedRef.current !== true) {
+      if (showRefreshIndicator) setIsRefreshing(false);
+      await restoreSnapshot();
+      setLoading(false);
+      return;
+    }
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+    if (showRefreshIndicator) setIsRefreshing(true);
+
+    const request = (async () => {
     try {
       checkBackendConnection().catch(() => {});
       const [recs, pls, recent, favs] = await Promise.allSettled([
@@ -62,6 +94,7 @@ export default function HomeScreen() {
 
       const snapshotUpdate: any = {};
       let anyFulfilled = false;
+      const hasFailures = [recs, pls, recent, favs].some((result) => result.status === 'rejected');
 
       if (recs.status === 'fulfilled') {
         setRecommendations(recs.value);
@@ -85,7 +118,17 @@ export default function HomeScreen() {
       }
 
       if (anyFulfilled) {
-        setIsSnapshotData(false);
+        setIsSnapshotData(hasFailures);
+        if (hasFailures) {
+          const snapshot = getLibrarySnapshot() || await hydrateLibrarySnapshot();
+          setSnapshotSavedAt(snapshot?.savedAt || null);
+          if (snapshot) {
+            if (recs.status === 'rejected' && snapshot.recommendations) setRecommendations(snapshot.recommendations);
+            if (pls.status === 'rejected' && snapshot.playlists) setPlaylists(snapshot.playlists);
+            if (recent.status === 'rejected' && snapshot.recentlyPlayed) setRecentlyPlayed(snapshot.recentlyPlayed);
+            if (favs.status === 'rejected' && snapshot.favorites) setFavorites(snapshot.favorites);
+          }
+        }
         saveLibrarySnapshot(snapshotUpdate).catch(() => {});
       } else {
         const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
@@ -100,20 +143,23 @@ export default function HomeScreen() {
       }
     } catch (err) {
       console.error('Error loading home data:', err);
-      const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
-      if (snapshot) {
-        if (snapshot.recommendations) setRecommendations(snapshot.recommendations);
-        if (snapshot.playlists) setPlaylists(snapshot.playlists);
-        if (snapshot.recentlyPlayed) setRecentlyPlayed(snapshot.recentlyPlayed);
-        if (snapshot.favorites) setFavorites(snapshot.favorites);
-        setIsSnapshotData(true);
-        setSnapshotSavedAt(snapshot.savedAt);
-      }
+      await restoreSnapshot();
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
+    })();
+    loadInFlightRef.current = request;
+    try {
+      await request;
+    } finally {
+      if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+    }
+    return request;
   };
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  });
 
   const handlePlayRecommendation = (item: RecommendationItem) => {
     if (!isBackendConnected) {
@@ -143,12 +189,57 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
-    loadData();
+    const pollIntervals = pollIntervalsRef.current;
+    const scheduleForegroundRefresh = () => {
+      if (foregroundRefreshTimerRef.current) clearTimeout(foregroundRefreshTimerRef.current);
+      if (appStateRef.current !== 'active' || netConnectedRef.current !== true) return;
+      // NetInfo and AppState can emit together; coalesce them into one load.
+      foregroundRefreshTimerRef.current = setTimeout(() => {
+        foregroundRefreshTimerRef.current = null;
+        if (!disposedRef.current) loadDataRef.current?.(false).catch(() => {});
+      }, 250);
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      const becameActive = appStateRef.current !== 'active' && nextState === 'active';
+      appStateRef.current = nextState;
+      if (becameActive) scheduleForegroundRefresh();
+    });
+    const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+      const wasConnected = netConnectedRef.current;
+      netConnectedRef.current = state.isConnected === true;
+      if (wasConnected === false && netConnectedRef.current) scheduleForegroundRefresh();
+    });
+
+    NetInfo.fetch().then((state) => {
+      if (disposedRef.current) return;
+      netConnectedRef.current = state.isConnected === true;
+      if (netConnectedRef.current && appStateRef.current === 'active') {
+        loadDataRef.current?.(false).catch(() => {});
+      } else {
+        restoreSnapshot().catch(() => {});
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!disposedRef.current) {
+        restoreSnapshot().catch(() => {});
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      disposedRef.current = true;
+      appStateSubscription.remove();
+      unsubscribeNetInfo();
+      if (foregroundRefreshTimerRef.current) clearTimeout(foregroundRefreshTimerRef.current);
+      foregroundRefreshTimerRef.current = null;
+      pollIntervals.forEach((interval) => clearInterval(interval));
+      pollIntervals.clear();
+    };
   }, []);
 
   const handleRefresh = () => {
-    setIsRefreshing(true);
-    loadData();
+    loadData(true).catch(() => {});
   };
 
   const handleDownloadRecommendation = async (item: RecommendationItem) => {
@@ -159,23 +250,31 @@ export default function HomeScreen() {
     setDownloadingIds(prev => new Set(prev).add(item.sourceId));
     try {
       const { jobId } = await api.startDownload(item.sourceUrl);
+      if (disposedRef.current) return;
       // Poll until done
       const interval = setInterval(async () => {
+        if (disposedRef.current) {
+          clearInterval(interval);
+          pollIntervalsRef.current.delete(interval);
+          return;
+        }
         try {
           const status = await api.getJobStatus(jobId);
           if (status.status === 'done' || status.status === 'failed') {
             clearInterval(interval);
+            pollIntervalsRef.current.delete(interval);
             setDownloadingIds(prev => {
               const next = new Set(prev);
               next.delete(item.sourceId);
               return next;
             });
             if (status.status === 'done') {
-              loadData(); // reload library
+              if (!disposedRef.current) loadData(); // reload library
             }
           }
         } catch {
           clearInterval(interval);
+          pollIntervalsRef.current.delete(interval);
           setDownloadingIds(prev => {
             const next = new Set(prev);
             next.delete(item.sourceId);
@@ -183,8 +282,10 @@ export default function HomeScreen() {
           });
         }
       }, 1500);
+      pollIntervalsRef.current.add(interval);
     } catch (err) {
       console.error('Download failed:', err);
+      if (disposedRef.current) return;
       setDownloadingIds(prev => {
         const next = new Set(prev);
         next.delete(item.sourceId);

@@ -6,6 +6,7 @@ import { Song, getFullThumbnailUrl } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { Colors } from '../constants/theme';
 import { useOfflineStore } from '../store/offlineStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { SongOptionsMenuModal } from './SongOptionsMenuModal';
 
 interface SongListItemProps {
@@ -32,6 +33,7 @@ export const SongListItem: React.FC<SongListItemProps> = ({
   const isCurrent = currentSong?.id === song.id;
   const isOfflineAvailable = useOfflineStore((s) => s.downloadedSongIds.has(song.id));
   const isDownloading = useOfflineStore((s) => s.downloadingIds.has(song.id));
+  const isBackendConnected = useSettingsStore((s) => s.isBackendConnected);
   const thumbUrl = getFullThumbnailUrl(song.thumbnailUrl || song.thumbnailPath);
 
   return (
@@ -100,13 +102,14 @@ export const SongListItem: React.FC<SongListItemProps> = ({
         <View style={styles.actionsContainer}>
           <TouchableOpacity
             style={styles.actionBtn}
+            disabled={!isBackendConnected}
             onPress={() => toggleFavorite(song.id)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons
               name={song.isFavorite ? 'heart' : 'heart-outline'}
               size={20}
-              color={song.isFavorite ? Colors.favorite : Colors.textMuted}
+              color={!isBackendConnected ? Colors.surfaceBorder : song.isFavorite ? Colors.favorite : Colors.textMuted}
             />
           </TouchableOpacity>
 
@@ -154,7 +157,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   art: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   placeholderArt: {
     flex: 1,

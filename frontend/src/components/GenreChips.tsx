@@ -33,15 +33,21 @@ export const GenreChips: React.FC<GenreChipsProps> = ({
 
         {genres.map((g) => {
           const isSelected = selectedGenre === g.name;
+          const thumbnailUrl = g.sampleThumbnailUrl
+            ? getFullThumbnailUrl(g.sampleThumbnailUrl)
+            : null;
           return (
             <TouchableOpacity
               key={g.id || g.name}
               style={[styles.chip, isSelected && styles.chipActive]}
               onPress={() => onSelectGenre(isSelected ? null : g.name)}
             >
-              {g.sampleThumbnailUrl && (
-                <Image source={{ uri: getFullThumbnailUrl(g.sampleThumbnailUrl) }} style={styles.chipThumb} />
-              )}
+              {thumbnailUrl ? (
+                <Image
+                  source={{ uri: thumbnailUrl }}
+                  style={styles.chipThumb}
+                />
+              ) : null}
               <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
                 {g.name} ({g.songCount})
               </Text>

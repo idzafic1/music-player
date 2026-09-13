@@ -30,7 +30,7 @@ function formatDuration(sec: number): string {
 }
 
 export default function SearchScreen() {
-  const { isOnline } = useSettingsStore();
+  const { isOnline, isBackendConnected } = useSettingsStore();
   const { playSong } = usePlayerStore();
   const [query, setQuery] = useState('');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
@@ -40,12 +40,21 @@ export default function SearchScreen() {
 
   // Track downloading and downloaded state for online results
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
-  const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
-
   const debounceTimeout = useRef<any>(null);
+  const pollIntervalsRef = useRef<Set<any>>(new Set());
+  const requestGenerationRef = useRef(0);
+  const disposedRef = useRef(false);
+
+  useEffect(() => () => {
+    disposedRef.current = true;
+    requestGenerationRef.current += 1;
+    if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+    pollIntervalsRef.current.forEach((interval) => clearInterval(interval));
+    pollIntervalsRef.current.clear();
+  }, []);
 
   useEffect(() => {
-    if (!query.trim()) {
+    if (!query.trim() || !isOnline || !isBackendConnected) {
       setOnlineResults([]);
       setSelectedMood(null);
       return;
@@ -53,24 +62,27 @@ export default function SearchScreen() {
 
     if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
 
+    const generation = ++requestGenerationRef.current;
     debounceTimeout.current = setTimeout(async () => {
       setIsSearching(true);
       try {
         const res = await api.searchOnline(query.trim(), 15);
+        if (disposedRef.current || generation !== requestGenerationRef.current) return;
         setOnlineResults(res);
       } catch (err) {
         console.error('Search error:', err);
       } finally {
-        setIsSearching(false);
+        if (!disposedRef.current && generation === requestGenerationRef.current) setIsSearching(false);
       }
     }, 400);
 
     return () => {
       if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
     };
-  }, [query]);
+  }, [query, isOnline, isBackendConnected]);
 
   const handlePlayPreview = async (item: OnlineSearchResult) => {
+    if (!isBackendConnected) return;
     const previewSong: Song = {
       id: `online_${item.sourceId}`,
       title: item.title,
@@ -94,22 +106,22 @@ export default function SearchScreen() {
   };
 
   const handleDownloadOnline = async (item: OnlineSearchResult) => {
+    if (!isBackendConnected) return;
     setDownloadingIds(prev => new Set(prev).add(item.sourceId));
     try {
       const { jobId } = await api.startDownload(item.sourceUrl);
+      if (disposedRef.current) return;
       const interval = setInterval(async () => {
+        if (disposedRef.current) {
+          clearInterval(interval);
+          pollIntervalsRef.current.delete(interval);
+          return;
+        }
         try {
           const status = await api.getJobStatus(jobId);
-          if (status.status === 'done') {
+          if (status.status === 'done' || status.status === 'failed') {
             clearInterval(interval);
-            setDownloadingIds(prev => {
-              const next = new Set(prev);
-              next.delete(item.sourceId);
-              return next;
-            });
-            setDownloadedIds(prev => new Set(prev).add(item.sourceId));
-          } else if (status.status === 'failed') {
-            clearInterval(interval);
+            pollIntervalsRef.current.delete(interval);
             setDownloadingIds(prev => {
               const next = new Set(prev);
               next.delete(item.sourceId);
@@ -118,6 +130,7 @@ export default function SearchScreen() {
           }
         } catch {
           clearInterval(interval);
+          pollIntervalsRef.current.delete(interval);
           setDownloadingIds(prev => {
             const next = new Set(prev);
             next.delete(item.sourceId);
@@ -125,7 +138,9 @@ export default function SearchScreen() {
           });
         }
       }, 1500);
+      pollIntervalsRef.current.add(interval);
     } catch (err) {
+      if (disposedRef.current) return;
       console.error('Download start failed:', err);
       setDownloadingIds(prev => {
         const next = new Set(prev);
@@ -173,7 +188,7 @@ export default function SearchScreen() {
               <TouchableOpacity
                 key={mood.label}
                 style={[styles.moodChip, isSelected && styles.moodChipSelected]}
-                disabled={!isOnline}
+                disabled={!isOnline || !isBackendConnected}
                 onPress={() => {
                   setSelectedMood(isSelected ? null : mood.label);
                   setQuery(isSelected ? '' : mood.query);
@@ -205,12 +220,14 @@ export default function SearchScreen() {
 
         {!isSearching && (
           <>
-            {!isOnline ? (
+            {!isOnline || !isBackendConnected ? (
               <View style={styles.centerBox}>
                 <Ionicons name="cloud-offline-outline" size={40} color={Colors.textMuted} />
-                <Text style={styles.emptyText}>You are offline</Text>
+                <Text style={styles.emptyText}>
+                  {!isBackendConnected ? 'Server unavailable' : 'You are offline'}
+                </Text>
                 <Text style={styles.emptySubText}>
-                  Online search requires an active internet connection.
+                  Online search requires the music server and an active internet connection.
                 </Text>
               </View>
             ) : query.trim().length > 0 && onlineResults.length === 0 ? (
@@ -221,8 +238,6 @@ export default function SearchScreen() {
             ) : (
               onlineResults.map((item) => {
                 const isDownloading = downloadingIds.has(item.sourceId);
-                const isDownloaded = downloadedIds.has(item.sourceId);
-
                 return (
                   <View key={item.sourceId} style={styles.onlineItem}>
                     <TouchableOpacity
@@ -257,19 +272,13 @@ export default function SearchScreen() {
                     <TouchableOpacity
                       style={[
                         styles.downloadBtn,
-                        isDownloaded && styles.downloadBtnDone,
                         isDownloading && styles.downloadBtnLoading
                       ]}
-                      disabled={isDownloading || isDownloaded}
+                      disabled={isDownloading}
                       onPress={() => handleDownloadOnline(item)}
                     >
                       {isDownloading ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : isDownloaded ? (
-                        <>
-                          <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                          <Text style={styles.downloadBtnText}>Saved</Text>
-                        </>
                       ) : (
                         <>
                           <Ionicons name="download-outline" size={16} color="#FFFFFF" />
@@ -391,13 +400,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   art: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   playOverlay: {
-    position: 'absolute',
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.35)',
-    width: '100%',
-    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },

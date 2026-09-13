@@ -13,9 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { api, WrappedStats } from '../services/api';
 import { Colors } from '../constants/theme';
+import { useSettingsStore } from '../store/settingsStore';
 
 export default function WrappedScreen() {
   const router = useRouter();
+  const { isBackendConnected } = useSettingsStore();
   const [range, setRange] = useState<'30d' | 'year' | 'all'>('30d');
   const [stats, setStats] = useState<WrappedStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,12 @@ export default function WrappedScreen() {
       from = 0; // all time
     }
 
+    if (!isBackendConnected) {
+      setStats(null);
+      setLoading(false);
+      setIsRefreshing(false);
+      return;
+    }
     try {
       const data = await api.getWrapped(from, now);
       setStats(data);
@@ -47,7 +55,7 @@ export default function WrappedScreen() {
   useEffect(() => {
     setLoading(true);
     loadStats();
-  }, [range]);
+  }, [range, isBackendConnected]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -82,6 +90,14 @@ export default function WrappedScreen() {
           <View style={{ width: 24 }} />
         </View>
         <Text style={styles.subtitle}>Your listening habits and top favorites</Text>
+        {!isBackendConnected && (
+          <View style={styles.unavailableBox}>
+            <Ionicons name="cloud-offline-outline" size={16} color={Colors.star} />
+            <Text style={styles.unavailableText}>
+              Wrapped stats require a connection to the music server.
+            </Text>
+          </View>
+        )}
 
         {/* Time Range Selector */}
         <View style={styles.rangeSelector}>
@@ -113,7 +129,13 @@ export default function WrappedScreen() {
           />
         }
       >
-        {loading ? (
+        {!isBackendConnected ? (
+          <View style={styles.centerBox}>
+            <Ionicons name="cloud-offline-outline" size={56} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>Stats unavailable</Text>
+            <Text style={styles.emptySubTitle}>Reconnect to load your listening history.</Text>
+          </View>
+        ) : loading ? (
           <View style={styles.centerBox}>
             <ActivityIndicator size="large" color={Colors.primary} />
           </View>
@@ -243,6 +265,20 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  unavailableBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  unavailableText: {
+    flex: 1,
+    color: Colors.star,
+    fontSize: 12,
   },
   header: {
     paddingHorizontal: 20,

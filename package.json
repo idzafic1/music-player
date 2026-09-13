@@ -12,9 +12,14 @@
     "frontend:dev": "npm --prefix frontend run start",
     "frontend:web": "npm --prefix frontend run web",
     "frontend:build": "npm --prefix frontend run build",
-    "test": "npm --prefix backend test"
+    "test": "npm --prefix backend test",
+    "frontend:test": "tsx --test frontend/test/*.test.ts"
   },
   "dependencies": {
     "shaka-player": "^4.16.49"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.4"
   }
 }

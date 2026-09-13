@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Song, getFullStreamUrl } from './api';
+import { createProgressReporter } from './playbackLogic';
 
 const INDEX_KEY = 'offline_downloads_index';
 const DOWNLOAD_DIR = FileSystem.documentDirectory + 'downloads/';
@@ -9,6 +10,7 @@ type IndexEntry = { localUri: string; downloadedAt: number; sizeBytes: number };
 type Index = Record<string, IndexEntry>;
 let cachedIndex: Index | null = null;
 const activeDownloads = new Map<string, { cancelAsync: () => Promise<unknown> }>();
+const activeDownloadPromises = new Map<string, Promise<void>>();
 
 async function readIndex(): Promise<Index> {
   if (cachedIndex) return cachedIndex;
@@ -57,8 +59,28 @@ export async function downloadSong(
   song: Song,
   onProgress?: (pct: number) => void
 ): Promise<void> {
+  const existing = activeDownloadPromises.get(song.id);
+  if (existing) return existing;
+
+  const promise = downloadSongInternal(song, onProgress);
+  activeDownloadPromises.set(song.id, promise);
+  try {
+    await promise;
+  } finally {
+    if (activeDownloadPromises.get(song.id) === promise) {
+      activeDownloadPromises.delete(song.id);
+    }
+  }
+}
+
+async function downloadSongInternal(
+  song: Song,
+  onProgress?: (pct: number) => void
+): Promise<void> {
   await ensureDirExists();
   const localUri = DOWNLOAD_DIR + song.id + '.m4a';
+  const partialUri = `${localUri}.part`;
+  await FileSystem.deleteAsync(partialUri, { idempotent: true });
   let expectedBytes = 0;
   let lastReportedAt = 0;
   onProgress?.(0);
@@ -71,17 +93,17 @@ export async function downloadSong(
     expectedBytes = 0;
   }
 
-  const reportProgress = (pct: number) => {
+  const reportProgress = createProgressReporter((pct) => {
     const now = Date.now();
     if (onProgress && Number.isFinite(pct) && (pct >= 1 || now - lastReportedAt >= 100)) {
       lastReportedAt = now;
-      onProgress(Math.max(0, Math.min(1, pct)));
+      onProgress(pct);
     }
-  };
+  });
 
   const downloadResumable = FileSystem.createDownloadResumable(
     getFullStreamUrl(song.id),
-    localUri,
+    partialUri,
     {},
     (progressEvent) => {
       if (progressEvent.totalBytesExpectedToWrite > 0) {
@@ -94,7 +116,7 @@ export async function downloadSong(
 
   const progressInterval = setInterval(async () => {
     if (!expectedBytes) return;
-    const fileInfo = await FileSystem.getInfoAsync(localUri);
+    const fileInfo = await FileSystem.getInfoAsync(partialUri);
     if (fileInfo.exists && 'size' in fileInfo) {
       reportProgress(fileInfo.size / expectedBytes);
     }
@@ -103,27 +125,33 @@ export async function downloadSong(
   let result;
   try {
     result = await downloadResumable.downloadAsync();
+    if (!result) throw new Error('Download failed: no result');
+    await FileSystem.moveAsync({ from: result.uri, to: localUri });
+  } catch (error) {
+    await FileSystem.deleteAsync(partialUri, { idempotent: true });
+    throw error;
   } finally {
     clearInterval(progressInterval);
     activeDownloads.delete(song.id);
   }
-  if (!result) throw new Error('Download failed: no result');
-  reportProgress(1);
-
-  const fileInfo = await FileSystem.getInfoAsync(result.uri);
+  const fileInfo = await FileSystem.getInfoAsync(localUri);
   const sizeBytes = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
 
   const index = await readIndex();
-  index[song.id] = { localUri: result.uri, downloadedAt: Date.now(), sizeBytes };
+  index[song.id] = { localUri, downloadedAt: Date.now(), sizeBytes };
   await writeIndex(index);
+  reportProgress(1);
 }
 
 export async function cancelDownload(songId: string): Promise<void> {
   const download = activeDownloads.get(songId);
   if (!download) return;
 
-  await download.cancelAsync();
-  await FileSystem.deleteAsync(DOWNLOAD_DIR + songId + '.m4a', { idempotent: true });
+  try {
+    await download.cancelAsync();
+  } finally {
+    await FileSystem.deleteAsync(`${DOWNLOAD_DIR + songId}.m4a.part`, { idempotent: true });
+  }
 }
 
 export async function deleteDownload(songId: string): Promise<void> {

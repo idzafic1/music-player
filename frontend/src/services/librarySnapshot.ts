@@ -16,38 +16,45 @@ export interface LibrarySnapshot {
 }
 
 let cachedSnapshot: LibrarySnapshot | null = null;
-let isHydrating = false;
+let hydrationPromise: Promise<LibrarySnapshot | null> | null = null;
+
+function isLibrarySnapshot(value: unknown): value is LibrarySnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const snapshot = value as Partial<LibrarySnapshot>;
+  return typeof snapshot.savedAt === 'number' &&
+    Array.isArray(snapshot.songs) &&
+    Array.isArray(snapshot.genres) &&
+    Array.isArray(snapshot.artists) &&
+    Array.isArray(snapshot.playlists) &&
+    (snapshot.playlistDetails === undefined || typeof snapshot.playlistDetails === 'object') &&
+    (snapshot.recommendations === undefined || Array.isArray(snapshot.recommendations)) &&
+    (snapshot.recentlyPlayed === undefined || Array.isArray(snapshot.recentlyPlayed)) &&
+    (snapshot.favorites === undefined || Array.isArray(snapshot.favorites));
+}
 
 /**
  * Hydrate library snapshot from AsyncStorage into memory.
  */
 export async function hydrateLibrarySnapshot(): Promise<LibrarySnapshot | null> {
   if (cachedSnapshot) return cachedSnapshot;
-  if (isHydrating) {
-    // Wait briefly if hydration is already in progress
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    if (cachedSnapshot) return cachedSnapshot;
+  if (!hydrationPromise) {
+    hydrationPromise = AsyncStorage.getItem(SNAPSHOT_STORAGE_KEY)
+      .then((raw) => {
+        if (!raw) return null;
+        const parsed: unknown = JSON.parse(raw);
+        if (isLibrarySnapshot(parsed)) {
+          cachedSnapshot = parsed;
+          return parsed;
+        }
+        console.warn('Stored library snapshot has an invalid shape; ignoring it.');
+        return null;
+      })
+      .catch((err) => {
+        console.warn('Failed to parse library snapshot from storage:', err);
+        return null;
+      });
   }
-
-  isHydrating = true;
-  try {
-    const raw = await AsyncStorage.getItem(SNAPSHOT_STORAGE_KEY);
-    if (!raw) {
-      cachedSnapshot = null;
-      return null;
-    }
-    const parsed: LibrarySnapshot = JSON.parse(raw);
-    if (parsed && typeof parsed.savedAt === 'number') {
-      cachedSnapshot = parsed;
-      return cachedSnapshot;
-    }
-    return null;
-  } catch (err) {
-    console.warn('Failed to parse library snapshot from storage:', err);
-    return null;
-  } finally {
-    isHydrating = false;
-  }
+  return hydrationPromise;
 }
 
 /**
@@ -77,37 +84,19 @@ export async function saveLibrarySnapshot(update: Partial<LibrarySnapshot>): Pro
 
     const next: LibrarySnapshot = {
       savedAt: Date.now(),
-      songs: update.songs !== undefined && update.songs.length > 0
-        ? update.songs
-        : (update.songs !== undefined && existing.songs.length === 0 ? update.songs : existing.songs),
-      genres: update.genres !== undefined && update.genres.length > 0
-        ? update.genres
-        : (update.genres !== undefined && existing.genres.length === 0 ? update.genres : existing.genres),
-      artists: update.artists !== undefined && update.artists.length > 0
-        ? update.artists
-        : (update.artists !== undefined && existing.artists.length === 0 ? update.artists : existing.artists),
-      playlists: update.playlists !== undefined && update.playlists.length > 0
-        ? update.playlists
-        : (update.playlists !== undefined && existing.playlists.length === 0 ? update.playlists : existing.playlists),
+      // An empty collection is a valid successful response. Failed requests do
+      // not call this function, so omitted fields retain their last success.
+      songs: update.songs ?? existing.songs,
+      genres: update.genres ?? existing.genres,
+      artists: update.artists ?? existing.artists,
+      playlists: update.playlists ?? existing.playlists,
       playlistDetails: {
         ...(existing.playlistDetails || {}),
         ...(update.playlistDetails || {}),
       },
-      recommendations: update.recommendations !== undefined && update.recommendations.length > 0
-        ? update.recommendations
-        : (update.recommendations !== undefined && (!existing.recommendations || existing.recommendations.length === 0)
-            ? update.recommendations
-            : existing.recommendations || []),
-      recentlyPlayed: update.recentlyPlayed !== undefined && update.recentlyPlayed.length > 0
-        ? update.recentlyPlayed
-        : (update.recentlyPlayed !== undefined && (!existing.recentlyPlayed || existing.recentlyPlayed.length === 0)
-            ? update.recentlyPlayed
-            : existing.recentlyPlayed || []),
-      favorites: update.favorites !== undefined && update.favorites.length > 0
-        ? update.favorites
-        : (update.favorites !== undefined && (!existing.favorites || existing.favorites.length === 0)
-            ? update.favorites
-            : existing.favorites || []),
+      recommendations: update.recommendations ?? existing.recommendations ?? [],
+      recentlyPlayed: update.recentlyPlayed ?? existing.recentlyPlayed ?? [],
+      favorites: update.favorites ?? existing.favorites ?? [],
     };
 
     cachedSnapshot = next;

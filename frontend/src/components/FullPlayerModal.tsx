@@ -16,6 +16,7 @@ import { getFullThumbnailUrl } from '../services/api';
 import { Colors, Spacing } from '../constants/theme';
 import { SongOptionsMenuModal } from './SongOptionsMenuModal';
 import { useOfflineStore } from '../store/offlineStore';
+import { useSettingsStore } from '../store/settingsStore';
 
 function formatTime(sec: number): string {
   if (isNaN(sec) || sec < 0) return '0:00';
@@ -54,6 +55,7 @@ export const FullPlayerModal: React.FC = () => {
   const isCurrentSongDownloading = useOfflineStore((state) =>
     currentSong ? state.downloadingIds.has(currentSong.id) : false
   );
+  const isBackendConnected = useSettingsStore((state) => state.isBackendConnected);
 
   if (!currentSong) return null;
 
@@ -181,13 +183,14 @@ export const FullPlayerModal: React.FC = () => {
               <View style={styles.actionIconGroup}>
                 <TouchableOpacity
                   onPress={() => toggleFavorite(currentSong.id)}
+                  disabled={!isBackendConnected}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   style={styles.favBtn}
                 >
                   <Ionicons
                     name={currentSong.isFavorite ? 'heart' : 'heart-outline'}
                     size={28}
-                    color={currentSong.isFavorite ? Colors.favorite : Colors.textMuted}
+                    color={!isBackendConnected ? Colors.surfaceBorder : currentSong.isFavorite ? Colors.favorite : Colors.textMuted}
                   />
                 </TouchableOpacity>
 

@@ -13,9 +13,11 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, DownloadJobStatus } from '../services/api';
 import { Colors } from '../constants/theme';
+import { useSettingsStore } from '../store/settingsStore';
 
 export default function ImportScreen() {
   const router = useRouter();
+  const { isBackendConnected } = useSettingsStore();
   const [url, setUrl] = useState('');
   const [playlistName, setPlaylistName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -23,29 +25,41 @@ export default function ImportScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const pollIntervalRef = useRef<any>(null);
+  const disposedRef = useRef(false);
 
   useEffect(() => {
     return () => {
+      disposedRef.current = true;
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     };
   }, []);
 
   const handleStartImport = async () => {
     if (!url.trim()) return;
+    if (!isBackendConnected) {
+      setErrorMessage('Server unavailable. Reconnect before starting a playlist import.');
+      return;
+    }
     setIsSubmitting(true);
     setErrorMessage(null);
     setCurrentJob(null);
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = null;
 
     try {
       const { jobId } = await api.importYouTubePlaylist(
         url.trim(),
         playlistName.trim() || undefined
       );
+      if (disposedRef.current) return;
 
       // Start polling status
       pollIntervalRef.current = setInterval(async () => {
+        if (disposedRef.current) return;
         try {
           const status = await api.getJobStatus(jobId);
+          if (disposedRef.current) return;
           setCurrentJob(status);
           if (status.status === 'done' || status.status === 'failed') {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -61,6 +75,7 @@ export default function ImportScreen() {
         }
       }, 1500);
     } catch (err: any) {
+      if (disposedRef.current) return;
       setIsSubmitting(false);
       setErrorMessage(err.message || 'Failed to start playlist import');
     }
@@ -85,6 +100,14 @@ export default function ImportScreen() {
       </View>
 
       <ScrollView style={styles.content}>
+        {!isBackendConnected && (
+          <View style={styles.unavailableBox}>
+            <Ionicons name="cloud-offline-outline" size={18} color={Colors.star} />
+            <Text style={styles.unavailableText}>
+              The server is unavailable. Playlist imports and progress checks are disabled.
+            </Text>
+          </View>
+        )}
         <View style={styles.formCard}>
           <Text style={styles.desc}>
             Paste a public YouTube or YouTube Music playlist URL. All tracks will be downloaded
@@ -121,8 +144,8 @@ export default function ImportScreen() {
           )}
 
           <TouchableOpacity
-            style={[styles.submitBtn, (!url.trim() || isSubmitting) && styles.submitBtnDisabled]}
-            disabled={!url.trim() || isSubmitting}
+            style={[styles.submitBtn, (!url.trim() || isSubmitting || !isBackendConnected) && styles.submitBtnDisabled]}
+            disabled={!url.trim() || isSubmitting || !isBackendConnected}
             onPress={handleStartImport}
           >
             {isSubmitting ? (
@@ -247,6 +270,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     fontSize: 14,
+  },
+  unavailableBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  unavailableText: {
+    flex: 1,
+    color: Colors.star,
+    fontSize: 12,
   },
   errorBox: {
     flexDirection: 'row',

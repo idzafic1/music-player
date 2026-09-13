@@ -189,8 +189,9 @@ export default function PlaylistDetailScreen() {
             )}
             {playlist.songs && playlist.songs.length > 0 && (
               <TouchableOpacity
-                style={styles.downloadPlaylistBtn}
+                style={[styles.downloadPlaylistBtn, !isBackendConnected && styles.disabledAction]}
                 onPress={playlistDownload ? cancelPlaylistDownload : handlePlaylistDownload}
+                disabled={!isBackendConnected && !playlistDownload}
                 activeOpacity={0.8}
               >
                 <Ionicons
@@ -205,6 +206,9 @@ export default function PlaylistDetailScreen() {
                 </Text>
               </TouchableOpacity>
             )}
+              {!isBackendConnected && (
+                <Text style={styles.disabledHint}>Server unavailable: playlist changes and downloads are disabled.</Text>
+              )}
           </View>
 
           {/* Song list */}
@@ -357,6 +361,15 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  disabledAction: {
+    opacity: 0.45,
+  },
+  disabledHint: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
   },
   listContainer: {
     marginTop: 8,

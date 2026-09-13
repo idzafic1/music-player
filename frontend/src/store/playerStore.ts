@@ -2,6 +2,7 @@ import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { Song, api } from '../services/api';
 import { audioEngine } from '../services/audioEngine';
+import { useSettingsStore } from './settingsStore';
 
 interface PlayerState {
   currentSong: Song | null;
@@ -199,6 +200,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
 
     toggleFavorite: async (songId: string) => {
+      if (!useSettingsStore.getState().isBackendConnected) {
+        Alert.alert('Server Unavailable', 'Favorites require a connection to the music server.');
+        return;
+      }
       const { currentSong, queue } = get();
       const isFav = currentSong?.id === songId ? currentSong.isFavorite : false;
       const newFav = !isFav;
@@ -218,6 +223,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           await api.removeFavorite(songId);
         }
       } catch (err) {
+        Alert.alert('Favorite not saved', err instanceof Error ? err.message : 'Could not update favorite.');
         // Revert on failure
         if (currentSong && currentSong.id === songId) {
           set({ currentSong: { ...currentSong, isFavorite: isFav } });
@@ -229,6 +235,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
 
     setRating: async (songId: string, stars: number) => {
+      if (!useSettingsStore.getState().isBackendConnected) {
+        Alert.alert('Server Unavailable', 'Ratings require a connection to the music server.');
+        return;
+      }
       const { currentSong, queue } = get();
       const oldRating = currentSong?.id === songId ? currentSong.rating : null;
       const newRating = oldRating === stars ? null : stars; // toggle off if tapped same star
@@ -247,6 +257,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           await api.setRating(songId, newRating);
         }
       } catch (err) {
+        Alert.alert('Rating not saved', err instanceof Error ? err.message : 'Could not update rating.');
         // Revert on failure
         if (currentSong && currentSong.id === songId) {
           set({ currentSong: { ...currentSong, rating: oldRating } });
