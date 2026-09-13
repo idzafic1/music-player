@@ -526,7 +526,7 @@ Verify:
 
 - Health endpoints.
 - Songs list/detail/update/delete.
-- Recent sort never returns more than five.
+- Library's own Recent sort (sort=added_at) is uncapped, same as other sort modes — do not reintroduce a five-item limit here.
 - Range streaming and seeking.
 - Download job lifecycle.
 - Recommendation refresh and mood reasons.
@@ -544,7 +544,7 @@ npm --prefix frontend run lint
 Verify:
 
 - Search title and debounce.
-- Five-item recent surface.
+- Home's dedicated Recently Played surface (separate endpoint) stays small (5-10); this is unrelated to Library's own uncapped Recent sort.
 - Previously played thumbnails after song switching.
 - Compact recommendation download control.
 - Downloaded/not-downloaded badge semantics.
