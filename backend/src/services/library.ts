@@ -118,9 +118,7 @@ export function listSongs(options: {
 }): { songs: SongDetail[]; total: number } {
   const db = getDb();
   const requestedLimit = options.limit || 50;
-  const limit = options.sort === 'added_at'
-    ? Math.min(requestedLimit, 5)
-    : Math.max(1, Math.min(requestedLimit, 200));
+  const limit = Math.max(1, Math.min(requestedLimit, 200));
   const offset = Math.max(0, options.offset || 0);
 
   let whereClauses: string[] = [];

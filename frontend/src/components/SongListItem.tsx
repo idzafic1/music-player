@@ -129,7 +129,7 @@ export const SongListItem: React.FC<SongListItemProps> = ({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    height: 80,
+    alignItems: 'stretch',
     borderRadius: 12,
     marginHorizontal: 12,
     marginVertical: 4,
@@ -142,16 +142,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   artContainer: {
-    width: 72,
-    height: '100%',
+    width: 56,
     position: 'relative',
     backgroundColor: Colors.surfaceBorder,
     justifyContent: 'center',
     alignItems: 'center',
   },
   art: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
   },
   placeholderArt: {
     flex: 1,

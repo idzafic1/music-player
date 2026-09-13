@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   },
   onlineItem: {
     flexDirection: 'row',
-    height: 80,
+    alignItems: 'stretch',
     borderRadius: 12,
     marginHorizontal: 12,
     marginVertical: 4,
@@ -313,16 +313,14 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   onlineThumb: {
-    width: 72,
-    height: '100%',
+    width: 56,
     backgroundColor: Colors.surfaceBorder,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
   art: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
   },
   playOverlay: {
     position: 'absolute',

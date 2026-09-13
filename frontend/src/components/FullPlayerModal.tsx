@@ -157,8 +157,8 @@ export const FullPlayerModal: React.FC = () => {
               )}
               <View style={styles.downloadBadge}>
                 <Ionicons
-                  name={isCurrentSongDownloaded ? 'cloud-done' : 'cloud-download-outline'}
-                  size={18}
+                  name={isCurrentSongDownloaded ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                  size={22}
                   color={isCurrentSongDownloaded ? Colors.primary : Colors.textMuted}
                 />
               </View>
@@ -406,14 +406,11 @@ const styles = StyleSheet.create({
   },
   downloadBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    backgroundColor: 'rgba(11,13,19,0.78)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    padding: 2,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,0 +1,24 @@
+Read docs/AGENT_CONSTITUTION.md and follow it for everything in this session.
+It has already been corrected once — the Library Recent-sort 5-item cap it
+used to have has been fixed, and the Search section has been rewritten to
+stay online-only. Don't reintroduce either of those.
+
+Before starting each remaining item across docs/ (check CARD_THUMBNAIL_FIX_ROUND2.md
+and HOME_LIBRARY_POLISH.md specifically), verify by reading the actual source
+whether it's already implemented — a previous agent ran out of tokens partway
+through this work, so some items may be partially done. Skip anything already
+correct.
+
+For each unimplemented item: make the exact change specified, then use the
+Android emulator (adb / emulator commands) to actually build, run, and
+visually verify it — don't consider anything done without that verification.
+
+Hard rule: do NOT run git push under any circumstances, even for local
+commits you create along the way. The user will review and push manually.
+
+Work through everything autonomously without pausing for permission on
+individual edits or commands. If something is genuinely ambiguous, make the
+most reasonable call, note it, and keep going.
+
+Report back with what you did, what you verified on the emulator, and
+anything you're unsure about, once everything is complete.
