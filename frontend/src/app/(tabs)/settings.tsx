@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSettingsStore } from '../../store/settingsStore';
 import { api } from '../../services/api';
 import { Colors } from '../../constants/theme';
+import { getTotalDownloadedBytes } from '../../services/offlineStorage';
+import { useOfflineStore } from '../../store/offlineStore';
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function SettingsScreen() {
   const {
@@ -24,12 +31,20 @@ export default function SettingsScreen() {
     setApiToken,
     checkBackendConnection
   } = useSettingsStore();
+  const downloadedCount = useOfflineStore((state) => state.downloadedSongIds.size);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
 
   const [inputUrl, setInputUrl] = useState(baseUrl);
   const [inputToken, setInputToken] = useState(apiToken);
   const [testing, setTesting] = useState(false);
   const [refreshingRecs, setRefreshingRecs] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    getTotalDownloadedBytes().then(setDownloadedBytes).catch((err) => {
+      console.error('Failed to read offline storage usage:', err);
+    });
+  }, [downloadedCount]);
 
   const handleSaveAndTest = async () => {
     setTesting(true);
@@ -184,6 +199,22 @@ export default function SettingsScreen() {
               </>
             )}
           </TouchableOpacity>
+        </View>
+
+        {/* Offline Storage Card */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Offline Storage</Text>
+            <Ionicons name="cloud-done-outline" size={20} color={Colors.primary} />
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Downloaded songs</Text>
+            <Text style={styles.infoValue}>{downloadedCount}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Storage used</Text>
+            <Text style={styles.infoValue}>{formatBytes(downloadedBytes)}</Text>
+          </View>
         </View>
 
         {/* App Info Card */}
