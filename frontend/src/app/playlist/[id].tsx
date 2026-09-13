@@ -5,33 +5,55 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  ActivityIndicator
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, Playlist, Song } from '../../services/api';
 import { usePlayerStore } from '../../store/playerStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { Colors } from '../../constants/theme';
 import { SongListItem } from '../../components/SongListItem';
 import { useOfflineStore } from '../../store/offlineStore';
+import {
+  getLibrarySnapshot,
+  hydrateLibrarySnapshot,
+  saveLibrarySnapshot,
+  formatSnapshotDate
+} from '../../services/librarySnapshot';
 
 export default function PlaylistDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { playSong } = usePlayerStore();
+  const { isBackendConnected } = useSettingsStore();
   const { playlistDownload, downloadPlaylist, cancelPlaylistDownload } = useOfflineStore();
 
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSnapshotData, setIsSnapshotData] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
 
   const loadPlaylist = async () => {
     if (!id) return;
     try {
       const data = await api.getPlaylist(id);
       setPlaylist(data);
+      setIsSnapshotData(false);
+      saveLibrarySnapshot({
+        playlistDetails: { [id]: data }
+      }).catch(() => {});
     } catch (err) {
-      console.error('Failed to load playlist:', err);
+      console.warn('Failed to load playlist from backend, checking snapshot:', err);
+      const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
+      const cached = snapshot?.playlistDetails?.[id] || snapshot?.playlists?.find((p) => p.id === id);
+      if (cached) {
+        setPlaylist(cached);
+        setIsSnapshotData(true);
+        setSnapshotSavedAt(snapshot?.savedAt || null);
+      }
     } finally {
       setLoading(false);
     }
@@ -48,6 +70,10 @@ export default function PlaylistDetailScreen() {
   };
 
   const handlePlaylistDownload = async () => {
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Downloading tracks requires a connection to the server.');
+      return;
+    }
     if (!playlist?.songs) return;
     try {
       await downloadPlaylist(playlist.id, playlist.songs);
@@ -57,6 +83,10 @@ export default function PlaylistDetailScreen() {
   };
 
   const handleRemoveSong = async (song: Song) => {
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Removing songs from a playlist requires a connection to the server.');
+      return;
+    }
     if (!playlist) return;
     try {
       await api.removeSongFromPlaylist(playlist.id, song.id);
@@ -67,10 +97,15 @@ export default function PlaylistDetailScreen() {
       });
     } catch (err) {
       console.error('Failed to remove song:', err);
+      Alert.alert('Error', 'Failed to remove song on server.');
     }
   };
 
   const handleMoveSong = async (fromIdx: number, direction: 'up' | 'down') => {
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Reordering playlist songs requires a connection to the server.');
+      return;
+    }
     if (!playlist || !playlist.songs) return;
     const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1;
     if (toIdx < 0 || toIdx >= playlist.songs.length) return;
@@ -106,6 +141,17 @@ export default function PlaylistDetailScreen() {
         </Text>
         <View style={{ width: 24 }} />
       </View>
+
+      {(isSnapshotData || !isBackendConnected) && (
+        <View style={styles.snapshotBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color={Colors.star} />
+          <Text style={styles.snapshotBannerText}>
+            {snapshotSavedAt
+              ? `Showing offline playlist snapshot from ${formatSnapshotDate(snapshotSavedAt)} • Server unreachable`
+              : 'Server unreachable • Offline snapshot mode'}
+          </Text>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.centerBox}>
@@ -330,5 +376,24 @@ const styles = StyleSheet.create({
   },
   reorderDisabled: {
     opacity: 0.2,
+  },
+  snapshotBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    gap: 8,
+  },
+  snapshotBannerText: {
+    color: Colors.star,
+    fontSize: 12,
+    flex: 1,
+    fontWeight: '500',
   },
 });

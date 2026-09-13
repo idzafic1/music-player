@@ -3,6 +3,7 @@ import TrackPlayer, { State, Event, Capability, AppKilledPlaybackBehavior, usePr
 import { Howl } from 'howler';
 import { Song, api, getFullStreamUrl, getApiBaseUrl } from './api';
 import { getLocalUri } from './offlineStorage';
+import { useSettingsStore } from '../store/settingsStore';
 
 export type ProgressCallback = (positionSec: number, durationSec: number) => void;
 export type StateCallback = (isPlaying: boolean) => void;
@@ -194,6 +195,9 @@ class NativeAudioEngine extends BaseAudioEngine {
 
     let url = await getLocalUri(song.id);
     if (!url) {
+      if (!useSettingsStore.getState().isBackendConnected) {
+        throw new Error('This track is not downloaded and the server is currently unreachable.');
+      }
       if (song.streamUrl?.startsWith('http://') || song.streamUrl?.startsWith('https://')) {
         url = song.streamUrl;
       } else if (song.streamUrl?.startsWith('/')) {
@@ -292,6 +296,9 @@ class WebAudioEngine extends BaseAudioEngine {
 
     let url = await getLocalUri(song.id);
     if (!url) {
+      if (!useSettingsStore.getState().isBackendConnected) {
+        throw new Error('This track is not downloaded and the server is currently unreachable.');
+      }
       if (song.streamUrl?.startsWith('http://') || song.streamUrl?.startsWith('https://')) {
         url = song.streamUrl;
       } else if (song.streamUrl?.startsWith('/')) {

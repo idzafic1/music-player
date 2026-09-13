@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Modal
+  Modal,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -18,6 +19,12 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { Colors } from '../../constants/theme';
 import { SongListItem } from '../../components/SongListItem';
+import {
+  getLibrarySnapshot,
+  hydrateLibrarySnapshot,
+  saveLibrarySnapshot,
+  formatSnapshotDate
+} from '../../services/librarySnapshot';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,6 +39,8 @@ export default function HomeScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const [isSnapshotData, setIsSnapshotData] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
 
   const latestRecommendation = recommendations[0];
   const activeMood = recommendations
@@ -43,7 +52,7 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
-      checkBackendConnection();
+      checkBackendConnection().catch(() => {});
       const [recs, pls, recent, favs] = await Promise.allSettled([
         api.getDailyRecommendations(),
         api.getPlaylists(),
@@ -51,12 +60,55 @@ export default function HomeScreen() {
         api.getFavorites(5)
       ]);
 
-      if (recs.status === 'fulfilled') setRecommendations(recs.value);
-      if (pls.status === 'fulfilled') setPlaylists(pls.value);
-      if (recent.status === 'fulfilled') setRecentlyPlayed(recent.value);
-      if (favs.status === 'fulfilled') setFavorites(favs.value.songs);
+      const snapshotUpdate: any = {};
+      let anyFulfilled = false;
+
+      if (recs.status === 'fulfilled') {
+        setRecommendations(recs.value);
+        snapshotUpdate.recommendations = recs.value;
+        anyFulfilled = true;
+      }
+      if (pls.status === 'fulfilled') {
+        setPlaylists(pls.value);
+        snapshotUpdate.playlists = pls.value;
+        anyFulfilled = true;
+      }
+      if (recent.status === 'fulfilled') {
+        setRecentlyPlayed(recent.value);
+        snapshotUpdate.recentlyPlayed = recent.value;
+        anyFulfilled = true;
+      }
+      if (favs.status === 'fulfilled') {
+        setFavorites(favs.value.songs);
+        snapshotUpdate.favorites = favs.value.songs;
+        anyFulfilled = true;
+      }
+
+      if (anyFulfilled) {
+        setIsSnapshotData(false);
+        saveLibrarySnapshot(snapshotUpdate).catch(() => {});
+      } else {
+        const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
+        if (snapshot) {
+          if (snapshot.recommendations) setRecommendations(snapshot.recommendations);
+          if (snapshot.playlists) setPlaylists(snapshot.playlists);
+          if (snapshot.recentlyPlayed) setRecentlyPlayed(snapshot.recentlyPlayed);
+          if (snapshot.favorites) setFavorites(snapshot.favorites);
+          setIsSnapshotData(true);
+          setSnapshotSavedAt(snapshot.savedAt);
+        }
+      }
     } catch (err) {
       console.error('Error loading home data:', err);
+      const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
+      if (snapshot) {
+        if (snapshot.recommendations) setRecommendations(snapshot.recommendations);
+        if (snapshot.playlists) setPlaylists(snapshot.playlists);
+        if (snapshot.recentlyPlayed) setRecentlyPlayed(snapshot.recentlyPlayed);
+        if (snapshot.favorites) setFavorites(snapshot.favorites);
+        setIsSnapshotData(true);
+        setSnapshotSavedAt(snapshot.savedAt);
+      }
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -64,6 +116,10 @@ export default function HomeScreen() {
   };
 
   const handlePlayRecommendation = (item: RecommendationItem) => {
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Online recommendation streams cannot be played while the server is unreachable.');
+      return;
+    }
     const previewSong: Song = {
       id: `preview-${item.sourceId}`,
       title: item.title,
@@ -96,6 +152,10 @@ export default function HomeScreen() {
   };
 
   const handleDownloadRecommendation = async (item: RecommendationItem) => {
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Downloading recommendations requires a connection to the server.');
+      return;
+    }
     setDownloadingIds(prev => new Set(prev).add(item.sourceId));
     try {
       const { jobId } = await api.startDownload(item.sourceUrl);
@@ -160,7 +220,13 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.importBtn}
-              onPress={() => router.push('/import')}
+              onPress={() => {
+                if (!isBackendConnected) {
+                  Alert.alert('Server Unreachable', 'Importing audio requires a connection to the server.');
+                  return;
+                }
+                router.push('/import');
+              }}
             >
               <Ionicons name="cloud-download-outline" size={20} color="#FFFFFF" />
               <Text style={styles.importBtnText}>Import</Text>
@@ -168,11 +234,13 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {!isBackendConnected && (
+        {(!isBackendConnected || isSnapshotData) && (
           <View style={styles.banner}>
-            <Ionicons name="warning-outline" size={18} color={Colors.star} />
+            <Ionicons name="cloud-offline-outline" size={18} color={Colors.star} />
             <Text style={styles.bannerText}>
-              Backend unreachable. Check your Settings or local server.
+              {snapshotSavedAt
+                ? `Server unreachable. Showing cached snapshot from ${formatSnapshotDate(snapshotSavedAt)}.`
+                : 'Server unreachable. Offline snapshot mode.'}
             </Text>
           </View>
         )}

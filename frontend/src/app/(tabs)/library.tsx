@@ -8,7 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   TextInput,
-  Modal
+  Modal,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,9 +19,17 @@ import { Colors } from '../../constants/theme';
 import { SongListItem } from '../../components/SongListItem';
 import { GenreChips } from '../../components/GenreChips';
 import { useOfflineStore } from '../../store/offlineStore';
+import { useSettingsStore } from '../../store/settingsStore';
+import {
+  getLibrarySnapshot,
+  hydrateLibrarySnapshot,
+  saveLibrarySnapshot,
+  formatSnapshotDate
+} from '../../services/librarySnapshot';
 
 export default function LibraryScreen() {
   const router = useRouter();
+  const { isBackendConnected, checkBackendConnection } = useSettingsStore();
   const [section, setSection] = useState<'songs' | 'artists' | 'playlists'>('songs');
   const [sort, setSort] = useState<'added_at' | 'title' | 'play_count' | null>('added_at');
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
@@ -33,6 +42,8 @@ export default function LibraryScreen() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [genres, setGenres] = useState<Genre[]>([]);
+  const [isSnapshotData, setIsSnapshotData] = useState(false);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -44,6 +55,7 @@ export default function LibraryScreen() {
 
   const loadData = async () => {
     try {
+      checkBackendConnection().catch(() => {});
       if (section === 'songs') {
         const [songsRes, genresRes] = await Promise.all([
           api.getSongs({ q: debouncedQuery.trim() || undefined, genre: selectedGenre || undefined, sort: sort || undefined, limit: 100 }),
@@ -51,15 +63,53 @@ export default function LibraryScreen() {
         ]);
         setSongs(songsRes.songs);
         setGenres(genresRes);
+        setIsSnapshotData(false);
+        saveLibrarySnapshot({ songs: songsRes.songs, genres: genresRes }).catch(() => {});
       } else if (section === 'artists') {
         const artistsRes = await api.getArtists();
         setArtists(artistsRes);
+        setIsSnapshotData(false);
+        saveLibrarySnapshot({ artists: artistsRes }).catch(() => {});
       } else if (section === 'playlists') {
         const playlistsRes = await api.getPlaylists();
         setPlaylists(playlistsRes);
+        setIsSnapshotData(false);
+        saveLibrarySnapshot({ playlists: playlistsRes }).catch(() => {});
       }
     } catch (err) {
-      console.error('Error loading library:', err);
+      console.warn('Backend unreachable, loading library snapshot:', err);
+      const snapshot = getLibrarySnapshot() || (await hydrateLibrarySnapshot());
+      if (snapshot) {
+        setIsSnapshotData(true);
+        setSnapshotSavedAt(snapshot.savedAt);
+        if (section === 'songs') {
+          let filtered = [...(snapshot.songs || [])];
+          if (debouncedQuery.trim()) {
+            const q = debouncedQuery.trim().toLowerCase();
+            filtered = filtered.filter(
+              (s) =>
+                s.title.toLowerCase().includes(q) ||
+                (s.artistName && s.artistName.toLowerCase().includes(q))
+            );
+          }
+          if (selectedGenre) {
+            filtered = filtered.filter((s) => s.genres && s.genres.includes(selectedGenre));
+          }
+          if (sort === 'title') {
+            filtered.sort((a, b) => a.title.localeCompare(b.title));
+          } else if (sort === 'play_count') {
+            filtered.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+          } else if (sort === 'added_at') {
+            filtered.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+          }
+          setSongs(filtered);
+          setGenres(snapshot.genres || []);
+        } else if (section === 'artists') {
+          setArtists(snapshot.artists || []);
+        } else if (section === 'playlists') {
+          setPlaylists(snapshot.playlists || []);
+        }
+      }
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -83,6 +133,10 @@ export default function LibraryScreen() {
 
   const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) return;
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Creating playlists requires a connection to the server.');
+      return;
+    }
     try {
       await api.createPlaylist(newPlaylistName.trim(), newPlaylistDesc.trim() || undefined);
       setNewPlaylistName('');
@@ -91,15 +145,21 @@ export default function LibraryScreen() {
       loadData();
     } catch (err) {
       console.error('Failed to create playlist:', err);
+      Alert.alert('Error', 'Failed to create playlist on server.');
     }
   };
 
   const handleDeleteSong = async (song: Song) => {
+    if (!isBackendConnected) {
+      Alert.alert('Server Unreachable', 'Deleting songs requires a connection to the server.');
+      return;
+    }
     try {
       await api.deleteSong(song.id);
       setSongs(prev => prev.filter(s => s.id !== song.id));
     } catch (err) {
       console.error('Failed to delete song:', err);
+      Alert.alert('Error', 'Failed to delete song on server.');
     }
   };
 
@@ -118,6 +178,17 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {(isSnapshotData || !isBackendConnected) && (
+          <View style={styles.snapshotBanner}>
+            <Ionicons name="cloud-offline-outline" size={16} color={Colors.star} />
+            <Text style={styles.snapshotBannerText}>
+              {snapshotSavedAt
+                ? `Offline snapshot from ${formatSnapshotDate(snapshotSavedAt)} • Server unreachable`
+                : 'Server unreachable • Offline snapshot mode'}
+            </Text>
+          </View>
+        )}
 
         {/* Section Segmented Control */}
         <View style={styles.segmentedContainer}>
@@ -627,5 +698,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  snapshotBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    gap: 8,
+    marginBottom: 10,
+  },
+  snapshotBannerText: {
+    color: Colors.star,
+    fontSize: 12,
+    flex: 1,
+    fontWeight: '500',
   },
 });

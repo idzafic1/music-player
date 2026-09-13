@@ -8,6 +8,7 @@ import { Colors } from '../constants/theme';
 import { FullPlayerModal } from '../components/FullPlayerModal';
 import { useSettingsStore } from '../store/settingsStore';
 import { useOfflineStore } from '../store/offlineStore';
+import { hydrateLibrarySnapshot } from '../services/librarySnapshot';
 import NetInfo from '@react-native-community/netinfo';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -30,8 +31,9 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }, 1500);
 
-    // Hydrate offline store on startup
+    // Hydrate offline store and library snapshot on startup
     useOfflineStore.getState().hydrate().catch(() => {});
+    hydrateLibrarySnapshot().catch(() => {});
 
     checkBackendConnection()
       .catch(() => {})

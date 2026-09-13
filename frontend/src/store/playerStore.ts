@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { Song, api } from '../services/api';
 import { audioEngine } from '../services/audioEngine';
@@ -78,8 +79,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         isPlaying: false,
       });
 
-      await audioEngine.load(song, context);
-      await audioEngine.play();
+      try {
+        await audioEngine.load(song, context);
+        await audioEngine.play();
+      } catch (err: unknown) {
+        set({ isPlaying: false });
+        const message = err instanceof Error ? err.message : 'Playback failed';
+        Alert.alert('Playback Unavailable', message);
+      }
     },
 
     togglePlayPause: async () => {
@@ -89,7 +96,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (isPlaying) {
         await audioEngine.pause();
       } else {
-        await audioEngine.play();
+        try {
+          await audioEngine.play();
+        } catch (err: unknown) {
+          set({ isPlaying: false });
+          const message = err instanceof Error ? err.message : 'Playback failed';
+          Alert.alert('Playback Unavailable', message);
+        }
       }
     },
 
@@ -125,8 +138,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           positionSec: 0,
           durationSec: nextSong.durationSec,
         });
-        await audioEngine.load(nextSong);
-        await audioEngine.play();
+        try {
+          await audioEngine.load(nextSong);
+          await audioEngine.play();
+        } catch (err: unknown) {
+          set({ isPlaying: false });
+          const message = err instanceof Error ? err.message : 'Playback failed';
+          Alert.alert('Playback Unavailable', message);
+        }
       }
     },
 
@@ -150,8 +169,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           positionSec: 0,
           durationSec: prevSong.durationSec,
         });
-        await audioEngine.load(prevSong);
-        await audioEngine.play();
+        try {
+          await audioEngine.load(prevSong);
+          await audioEngine.play();
+        } catch (err: unknown) {
+          set({ isPlaying: false });
+          const message = err instanceof Error ? err.message : 'Playback failed';
+          Alert.alert('Playback Unavailable', message);
+        }
       } else {
         await audioEngine.seek(0);
       }
