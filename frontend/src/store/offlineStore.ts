@@ -8,6 +8,7 @@ interface OfflineState {
   downloadedSongIds: Set<string>;
   downloadingIds: Set<string>;
   downloadProgress: Record<string, number>;
+  failedDownloads: Record<string, { song: Song; error: string }>;
   playlistDownload: {
     playlistId: string;
     completed: number;
@@ -21,6 +22,7 @@ interface OfflineState {
   download: (song: Song) => Promise<void>;
   downloadPlaylist: (playlistId: string, songs: Song[]) => Promise<void>;
   cancelPlaylistDownload: () => Promise<void>;
+  retryFailedDownloads: () => Promise<void>;
   remove: (songId: string) => Promise<void>;
   isDownloaded: (songId: string) => boolean;
 }
@@ -29,6 +31,7 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
   downloadedSongIds: new Set(),
   downloadingIds: new Set(),
   downloadProgress: {},
+  failedDownloads: {},
   playlistDownload: null,
   lastError: null,
 
@@ -51,15 +54,31 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
           downloadedSongIds: new Set(s.downloadedSongIds).add(song.id),
           downloadingIds: downloading,
           downloadProgress: { ...s.downloadProgress, [song.id]: 1 },
+          failedDownloads: Object.fromEntries(Object.entries(s.failedDownloads).filter(([id]) => id !== song.id)),
         };
       });
     } catch (err) {
       set((s) => {
         const downloading = new Set(s.downloadingIds);
         downloading.delete(song.id);
-        return { downloadingIds: downloading, lastError: err instanceof Error ? err.message : 'Download failed' };
+        const message = err instanceof Error ? err.message : 'Download failed';
+        return {
+          downloadingIds: downloading,
+          failedDownloads: { ...s.failedDownloads, [song.id]: { song, error: message } },
+          lastError: message,
+        };
       });
       throw err;
+    }
+  },
+
+  retryFailedDownloads: async () => {
+    const failedSongs = Object.values(get().failedDownloads).map(({ song }) => song);
+    for (const song of failedSongs) {
+      try {
+        await get().download(song);
+      } catch {
+      }
     }
   },
 

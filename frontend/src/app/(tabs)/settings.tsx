@@ -32,12 +32,15 @@ export default function SettingsScreen() {
     checkBackendConnection
   } = useSettingsStore();
   const downloadedCount = useOfflineStore((state) => state.downloadedSongIds.size);
+  const failedDownloadCount = useOfflineStore((state) => Object.keys(state.failedDownloads).length);
+  const retryFailedDownloads = useOfflineStore((state) => state.retryFailedDownloads);
   const [downloadedBytes, setDownloadedBytes] = useState(0);
 
   const [inputUrl, setInputUrl] = useState(baseUrl);
   const [inputToken, setInputToken] = useState(apiToken);
   const [testing, setTesting] = useState(false);
   const [refreshingRecs, setRefreshingRecs] = useState(false);
+  const [retryingDownloads, setRetryingDownloads] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -76,6 +79,15 @@ export default function SettingsScreen() {
       setMessage({ text: err.message || 'Failed to refresh recommendations', type: 'error' });
     } finally {
       setRefreshingRecs(false);
+    }
+  };
+
+  const handleRetryDownloads = async () => {
+    setRetryingDownloads(true);
+    try {
+      await retryFailedDownloads();
+    } finally {
+      setRetryingDownloads(false);
     }
   };
 
@@ -215,6 +227,22 @@ export default function SettingsScreen() {
             <Text style={styles.infoLabel}>Storage used</Text>
             <Text style={styles.infoValue}>{formatBytes(downloadedBytes)}</Text>
           </View>
+          {failedDownloadCount > 0 && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.secondaryBtn]}
+              disabled={retryingDownloads}
+              onPress={handleRetryDownloads}
+            >
+              {retryingDownloads ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                  <Text style={styles.actionBtnText}>Retry {failedDownloadCount} failed download{failedDownloadCount === 1 ? '' : 's'}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* App Info Card */}
