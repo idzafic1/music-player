@@ -64,7 +64,11 @@ export default function LibraryScreen() {
         setSongs(songsRes.songs);
         setGenres(genresRes);
         setIsSnapshotData(false);
-        saveLibrarySnapshot({ songs: songsRes.songs, genres: genresRes }).catch(() => {});
+        const hasCompleteSongCollection = !debouncedQuery.trim() && !selectedGenre && songsRes.songs.length >= songsRes.total;
+        saveLibrarySnapshot({
+          ...(hasCompleteSongCollection ? { songs: songsRes.songs } : {}),
+          genres: genresRes
+        }).catch(() => {});
       } else if (section === 'artists') {
         const artistsRes = await api.getArtists();
         setArtists(artistsRes);
@@ -170,8 +174,9 @@ export default function LibraryScreen() {
           <Text style={styles.title}>Library</Text>
           {section === 'playlists' && (
             <TouchableOpacity
-              style={styles.addBtn}
+              style={[styles.addBtn, !isBackendConnected && styles.disabledAction]}
               onPress={() => setIsNewPlaylistModalVisible(true)}
+              disabled={!isBackendConnected}
             >
               <Ionicons name="add" size={20} color="#FFFFFF" />
               <Text style={styles.addBtnText}>New Playlist</Text>
@@ -474,6 +479,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
+  },
+  disabledAction: {
+    opacity: 0.45,
   },
   segmentedContainer: {
     flexDirection: 'row',
