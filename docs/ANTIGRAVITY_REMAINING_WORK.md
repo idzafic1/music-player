@@ -120,42 +120,28 @@ new change caused a failure instead of hiding it.
    - Home derives refresh date and an active mood from recommendation reasons.
    - Settings can manually regenerate recommendations.
 
+8. **Server-unavailable mode with persistent library snapshot**
+   - Retains full library state (`songs`, `genres`, `artists`, `playlists`,
+     `playlistDetails`, `recommendations`, `recentlyPlayed`, `favorites`) in
+     AsyncStorage key `offline_library_snapshot_v1`.
+   - Surfaces display amber snapshot warning banner with formatted timestamp
+     when backend is unreachable.
+   - Non-downloaded audio streams trigger explicit 'Playback Unavailable' alerts.
+   - Offline actions (create playlist, delete, edit, ratings, favorites) are
+     disabled or explained.
+   - Reconnecting to backend clears snapshot indicators and resumes live sync.
+   - Owner: `frontend/src/services/librarySnapshot.ts`,
+     `frontend/src/app/(tabs)/index.tsx`, `frontend/src/app/(tabs)/library.tsx`,
+     `frontend/src/app/playlist/[id].tsx`, and `frontend/src/services/audioEngine.ts`.
+
 ### Not yet complete or not sufficiently verified
 
-#### A. Server-unavailable mode with a last successful snapshot
+#### A. Server-unavailable mode with a last successful snapshot (Completed & Verified)
 
-The master spec requires the app to remain navigable when the backend is
-unreachable, preserve already-known content, show local downloads, and clearly
-disable backend-dependent operations. The current Home screen has an
-unreachable banner, but a robust persisted library snapshot is not yet a
-complete, explicit subsystem.
-
-Investigate:
-
-- Which library surfaces already retain data only in React component state.
-- Whether process restarts lose all metadata even when device audio remains.
-- How cached artwork from `expo-image` behaves without backend access.
-- Whether playlists, favorites, genres, and song metadata need separate
-  snapshots or one normalized snapshot.
-- How snapshot freshness and invalidation should be represented.
-
-Required behavior:
-
-- Write a snapshot only after a successful, valid backend response.
-- Never replace valid cached data with an empty array merely because a request
-  failed.
-- Hydrate local snapshot data without blocking the app shell.
-- Mark the surface as cached/stale, not freshly synchronized.
-- Keep local downloaded playback usable.
-- Disable or explain ratings, favorites, metadata edits, imports, online
-  search, server playlist edits, and non-downloaded streaming.
-- Preserve useful server error messages.
-- Do not silently pretend an operation succeeded.
-
-Potential storage can be AsyncStorage or another existing client mechanism, but
-the agent must choose deliberately and document size/freshness tradeoffs. A
-schema change is not automatically authorized; stop if a backend snapshot is
-being proposed.
+Implemented via `librarySnapshot.ts` and verified on real Android emulator
+(online fetch -> snapshot persisted -> backend stopped -> app cold restart ->
+snapshot rendered -> offline play alert verified -> backend reconnected -> live
+data resumed).
 
 #### B. Policy-aware background refresh
 
