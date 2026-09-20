@@ -381,6 +381,7 @@ const styles = StyleSheet.create({
   onlineItem: {
     flexDirection: 'row',
     alignItems: 'stretch',
+    minHeight: 56,
     borderRadius: 12,
     marginHorizontal: 12,
     marginVertical: 4,
