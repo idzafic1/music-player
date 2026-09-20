@@ -1,0 +1,62 @@
+You are doing independent QA on this repo — not implementing features, not
+reviewing whether code "looks right." Your job is to actually try to break
+things and report what you find, including things that pass but shouldn't,
+and things a previous session claimed were verified but weren't actually
+re-run independently.
+
+Read docs/QA_ENGINEER_BRIEF.md and docs/QA_TEST_MATRIX.md first — they define
+scope and priority. Also read docs/AGENTIC_PRODUCT_MASTER_SPEC.md for the
+product rules you're checking behavior against.
+
+Before anything else, run every existing check for real, don't trust prior
+session reports:
+  npm --prefix backend install && npm --prefix backend run build && npm --prefix backend test
+  npm --prefix frontend install && npm --prefix frontend run lint && npm --prefix frontend run build && npm --prefix frontend test
+
+If any of these fail, that's your first finding — investigate and report the
+actual root cause, don't just note "it failed."
+
+Then focus adversarial testing on the newest, least battle-tested surfaces,
+since these are the most likely to have gaps:
+
+1. Playlist offline download + cancellation — start a playlist download,
+   cancel it mid-transfer, confirm no partial/corrupt file gets indexed as
+   downloaded, confirm cancelling one song in a playlist doesn't affect
+   others already completed, confirm re-downloading after a cancel works
+   cleanly.
+
+2. Background refresh policy — force each rejection reason on purpose
+   (offline, metered connection, app backgrounded, throttled) and confirm
+   the UI reflects the correct state each time, not just that refresh was
+   silently skipped. Try rapid foreground/background switching to check for
+   the stampede protection actually working.
+
+3. Server-unavailable snapshot mode — load data online, kill the backend,
+   confirm snapshot renders with correct staleness indicator, try every
+   write action (favorite, rate, create playlist, delete) while offline and
+   confirm each is either disabled or fails with a clear explanation, not a
+   silent no-op or a crash. Reconnect and confirm live sync actually resumes
+   rather than getting stuck showing stale data.
+
+4. Retry queue for failed downloads — force a failure (stop the backend
+   mid-download), confirm the failure state and retry control appear,
+   confirm retry actually works once the backend is back, try triggering
+   multiple simultaneous failures and confirm the retry queue handles more
+   than one at a time correctly.
+
+5. Layout safety — check every screen with a thumbnail-in-row component on
+   an actual device/emulator at a few different content lengths (very short
+   and very long title/artist strings) to try to reproduce the
+   percentage-height layout bug class that's occurred multiple times before.
+
+For anything you find broken: report it precisely (steps to reproduce,
+expected vs actual), don't fix it yourself unless it's trivially scoped and
+you're confident about the right fix — QA's job here is to find problems
+accurately, not necessarily to fix all of them in the same pass.
+
+Do not run git push. If you make any fixes, commit them locally with a clear
+message separate from your QA findings report.
+
+Report back with: a clear pass/fail per area above, exact repro steps for
+anything broken, and an honest assessment of whether this is close to
+production-ready for personal use or not.
