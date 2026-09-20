@@ -6,7 +6,7 @@ import {
   playlistProgress,
   QualifyingPlayTracker,
   resolvePlaybackUri,
-} from '../src/services/playbackLogic';
+} from '../src/services/playbackLogic.ts';
 
 test('progress is clamped, monotonic, and starts at zero', () => {
   const values: number[] = [];
