@@ -33,6 +33,8 @@ export const SongListItem: React.FC<SongListItemProps> = ({
   const isCurrent = currentSong?.id === song.id;
   const isOfflineAvailable = useOfflineStore((s) => s.downloadedSongIds.has(song.id));
   const isDownloading = useOfflineStore((s) => s.downloadingIds.has(song.id));
+  const failedDownload = useOfflineStore((s) => s.failedDownloads[song.id]);
+  const download = useOfflineStore((s) => s.download);
   const isBackendConnected = useSettingsStore((s) => s.isBackendConnected);
   const thumbUrl = getFullThumbnailUrl(song.thumbnailUrl || song.thumbnailPath);
 
@@ -86,7 +88,21 @@ export const SongListItem: React.FC<SongListItemProps> = ({
                 <Text style={styles.ratingText}>{song.rating}</Text>
               </>
             ) : null}
-            {(isOfflineAvailable || isDownloading) && (
+            {failedDownload ? (
+              <>
+                <View style={styles.dot} />
+                <TouchableOpacity
+                  style={styles.inlineRetryBadge}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    download(song).catch(() => {});
+                  }}
+                >
+                  <Ionicons name="alert-circle" size={12} color={Colors.danger} />
+                  <Text style={styles.retryText}>Retry download</Text>
+                </TouchableOpacity>
+              </>
+            ) : (isOfflineAvailable || isDownloading) ? (
               <>
                 <View style={styles.dot} />
                 <Ionicons
@@ -95,11 +111,24 @@ export const SongListItem: React.FC<SongListItemProps> = ({
                   color={isOfflineAvailable ? Colors.primary : Colors.accent}
                 />
               </>
-            )}
+            ) : null}
           </View>
         </View>
 
         <View style={styles.actionsContainer}>
+          {failedDownload && (
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={(e) => {
+                e.stopPropagation();
+                download(song).catch(() => {});
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="refresh-circle" size={22} color={Colors.danger} />
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={styles.actionBtn}
             disabled={!isBackendConnected}
@@ -218,6 +247,16 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 11,
     color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  inlineRetryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  retryText: {
+    fontSize: 11,
+    color: Colors.danger,
     fontWeight: '600',
   },
 });

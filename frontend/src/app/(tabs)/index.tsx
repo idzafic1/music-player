@@ -44,6 +44,7 @@ export default function HomeScreen() {
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [isSnapshotData, setIsSnapshotData] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
+  const [refreshStatusNote, setRefreshStatusNote] = useState<string | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const netConnectedRef = useRef<boolean | null>(null);
   const lastRefreshedAtRef = useRef<number | null>(null);
@@ -87,12 +88,21 @@ export default function HomeScreen() {
 
     if (!decision.allowed) {
       if (showRefreshIndicator) setIsRefreshing(false);
-      if (decision.reason === 'offline' || decision.reason === 'metered_connection') {
+      if (decision.reason === 'throttled') {
+        setRefreshStatusNote('Auto-refresh throttled (15m interval). Pull down to refresh manually.');
+      } else if (decision.reason === 'app_not_active') {
+        setRefreshStatusNote('Auto-refresh skipped while app is in background.');
+      } else if (decision.reason === 'metered_connection') {
+        setRefreshStatusNote('Auto-refresh paused on metered connection.');
+        await restoreSnapshot();
+      } else if (decision.reason === 'offline') {
+        setRefreshStatusNote(null);
         await restoreSnapshot();
       }
       setLoading(false);
       return;
     }
+    setRefreshStatusNote(null);
 
     if (loadInFlightRef.current) return loadInFlightRef.current;
     if (showRefreshIndicator) setIsRefreshing(true);
@@ -360,6 +370,13 @@ export default function HomeScreen() {
                 ? `Server unreachable. Showing cached snapshot from ${formatSnapshotDate(snapshotSavedAt)}.`
                 : 'Server unreachable. Offline snapshot mode.'}
             </Text>
+          </View>
+        )}
+
+        {refreshStatusNote && isBackendConnected && !isSnapshotData && (
+          <View style={styles.subtleNoteBanner}>
+            <Ionicons name="information-circle-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.subtleNoteText}>{refreshStatusNote}</Text>
           </View>
         )}
 
@@ -816,5 +833,21 @@ const styles = StyleSheet.create({
   emptyInlineText: {
     fontSize: 13,
     color: Colors.textSecondary,
+  },
+  subtleNoteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    gap: 6,
+  },
+  subtleNoteText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    flex: 1,
   },
 });
