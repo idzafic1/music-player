@@ -42,10 +42,15 @@ export default function RootLayout() {
         SplashScreen.hideAsync().catch(() => {});
       });
 
-    // Wire NetInfo to drive isOnline state
+    // Wire NetInfo to drive isOnline and isMetered state
     const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
       useSettingsStore.getState().setOnline(state.isConnected ?? true);
+      useSettingsStore.getState().setMetered(Boolean((state.details as any)?.isConnectionExpensive));
     });
+    NetInfo.fetch().then((state) => {
+      useSettingsStore.getState().setOnline(state.isConnected ?? true);
+      useSettingsStore.getState().setMetered(Boolean((state.details as any)?.isConnectionExpensive));
+    }).catch(() => {});
 
     return () => {
       clearTimeout(fallbackHideTimer);

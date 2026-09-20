@@ -5,12 +5,14 @@ interface SettingsState {
   baseUrl: string;
   apiToken: string;
   isOnline: boolean;
+  isMetered: boolean;
   isBackendConnected: boolean;
   lastChecked: number;
 
   setBaseUrl: (url: string) => void;
   setApiToken: (token: string) => void;
   setOnline: (online: boolean) => void;
+  setMetered: (metered: boolean) => void;
   checkBackendConnection: () => Promise<boolean>;
 }
 
@@ -18,6 +20,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   baseUrl: getApiBaseUrl(),
   apiToken: getApiToken(),
   isOnline: true,
+  isMetered: false,
   isBackendConnected: false,
   lastChecked: 0,
 
@@ -35,6 +38,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setOnline: (online: boolean) => {
     set({ isOnline: online });
+  },
+
+  setMetered: (metered: boolean) => {
+    set({ isMetered: metered });
   },
 
   checkBackendConnection: async () => {

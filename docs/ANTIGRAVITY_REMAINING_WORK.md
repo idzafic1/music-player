@@ -143,32 +143,26 @@ Implemented via `librarySnapshot.ts` and verified on real Android emulator
 snapshot rendered -> offline play alert verified -> backend reconnected -> live
 data resumed).
 
-#### B. Policy-aware background refresh
+#### B. Policy-aware background refresh (Completed & Verified)
 
-The backend has a daily recommendation scheduler, but client-side background
-refresh policy is not a fully specified/verified capability.
-
-Before adding work:
-
-- Inspect NetInfo subscription and current app lifecycle handling.
-- Inspect all existing polling intervals and cleanup paths.
-- Decide whether this means foreground refresh on reconnect, OS background
-  execution, or both. Do not assume these are equivalent.
-- Determine whether metered-network policy is available and meaningful in the
-  current Expo target.
-
-Required behavior:
-
-- No refresh when offline.
-- No duplicate concurrent refresh.
-- Bounded timeout and visible failure state.
-- No endless spinner.
-- Cleanup listeners/timers on unmount.
-- Do not refresh aggressively on every render or connectivity event.
-- Preserve the last successful content if refresh fails.
-- If true OS background execution is required, stop and ask for product and
-  platform authorization rather than pretending a foreground timer is
-  background work.
+Implemented policy-aware foreground refresh with metered-network and staleness
+gating via `frontend/src/services/refreshPolicy.ts`, wired into NetInfo's
+`isConnectionExpensive` Android metered state, AppState lifecycle listener, and
+Home screen data loading with coalesced events and failure preservation:
+- Rejects automatic refreshes when offline (`offline`).
+- Rejects automatic refreshes on metered connections (`metered_connection`), while
+  allowing manual pull-to-refresh (`manual`).
+- Rejects automatic refreshes when app is in background/inactive (`app_not_active`).
+- Throttles automatic refreshes to minimum 15-minute interval (`throttled`).
+- Coalesces reconnect and foreground-active events with debounce to prevent stampedes.
+- Retains last-successful payload and snapshot state on backend timeout or 503 error;
+  never wipes good data with empty arrays.
+- Verified on real Android emulator:
+  - Online load and manual pull-to-refresh (`27_home_online_refresh.png`, `28_pull_to_refresh.png`).
+  - Rapid background/foreground switches throttled (`29_foregrounded_no_stampede.png`).
+  - Backend kill preserved snapshot and displayed formatted warning banner (`30_offline_retained_snapshot.png`).
+  - Backend restart restored online state without disruption (`31_online_restored.png`).
+  - 14 automated frontend unit tests passing in `refreshPolicy.test.ts` & `offlineStore.test.ts`.
 
 #### C. Automated frontend tests
 
@@ -227,13 +221,12 @@ These conflicts must be called out to future agents:
    uncontrolled tags are not a genre taxonomy.
 4. The general Library Recent sort and Home Recently Played are separate
    surfaces. Never merge their limits or endpoints.
-5. The master spec itself contains an internal contradiction: section 7.2 says
-   Library `sort=added_at` is uncapped (up to the normal server clamp), while
-   one verification bullet later says “Recent sort never returns more than
-   five.” The uncapped rule is the explicit corrected product rule and is
-   repeated in the master spec's definition of done; agents must preserve the
-   uncapped Library behavior and report this stale verification bullet rather
-   than reintroduce the five-item bug.
+5. The previous master spec contradiction regarding Library `sort=added_at`
+   versus "Recent sort never returns more than five" was resolved directly in
+   `docs/AGENTIC_PRODUCT_MASTER_SPEC.md` (commit `98ff9cf`): Library's own Recent
+   sort (`sort=added_at`) is uncapped (up to normal server limits), while Home's
+   dedicated Recently Played surface is a separate bounded endpoint. Agents must
+   preserve the uncapped Library behavior.
 
 Do not silently “fix” these conflicts by rewriting unrelated documents during
 feature work. Report them and update only directly relevant documentation.

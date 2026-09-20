@@ -27,6 +27,7 @@ import {
   saveLibrarySnapshot,
   formatSnapshotDate
 } from '../../services/librarySnapshot';
+import { shouldPerformRefresh } from '../../services/refreshPolicy';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -45,8 +46,9 @@ export default function HomeScreen() {
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<number | null>(null);
   const appStateRef = useRef(AppState.currentState);
   const netConnectedRef = useRef<boolean | null>(null);
+  const lastRefreshedAtRef = useRef<number | null>(null);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
-  const loadDataRef = useRef<((showRefreshIndicator?: boolean) => Promise<void>) | null>(null);
+  const loadDataRef = useRef<((showRefreshIndicator?: boolean, isManual?: boolean) => Promise<void>) | null>(null);
   const foregroundRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollIntervalsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
   const disposedRef = useRef(false);
@@ -70,15 +72,28 @@ export default function HomeScreen() {
     setSnapshotSavedAt(snapshot.savedAt);
   };
 
-  const loadData = async (showRefreshIndicator = false) => {
-    // NetInfo is deliberately the gate here: this policy only retries while
-    // the app is foregrounded and the device reports an active connection.
-    if (appStateRef.current !== 'active' || netConnectedRef.current !== true) {
+  const loadData = async (showRefreshIndicator = false, isManual = false) => {
+    const isMetered = useSettingsStore.getState().isMetered;
+    const isOnlineState = useSettingsStore.getState().isOnline;
+    const effectiveOnline = (netConnectedRef.current ?? true) && isOnlineState;
+
+    const decision = shouldPerformRefresh({
+      isOnline: effectiveOnline,
+      isMetered,
+      appState: appStateRef.current,
+      isManual,
+      lastRefreshedAt: lastRefreshedAtRef.current,
+    });
+
+    if (!decision.allowed) {
       if (showRefreshIndicator) setIsRefreshing(false);
-      await restoreSnapshot();
+      if (decision.reason === 'offline' || decision.reason === 'metered_connection') {
+        await restoreSnapshot();
+      }
       setLoading(false);
       return;
     }
+
     if (loadInFlightRef.current) return loadInFlightRef.current;
     if (showRefreshIndicator) setIsRefreshing(true);
 
@@ -118,6 +133,7 @@ export default function HomeScreen() {
       }
 
       if (anyFulfilled) {
+        lastRefreshedAtRef.current = Date.now();
         setIsSnapshotData(hasFailures);
         if (hasFailures) {
           const snapshot = getLibrarySnapshot() || await hydrateLibrarySnapshot();
@@ -192,12 +208,11 @@ export default function HomeScreen() {
     const pollIntervals = pollIntervalsRef.current;
     const scheduleForegroundRefresh = () => {
       if (foregroundRefreshTimerRef.current) clearTimeout(foregroundRefreshTimerRef.current);
-      if (appStateRef.current !== 'active' || netConnectedRef.current !== true) return;
       // NetInfo and AppState can emit together; coalesce them into one load.
       foregroundRefreshTimerRef.current = setTimeout(() => {
         foregroundRefreshTimerRef.current = null;
-        if (!disposedRef.current) loadDataRef.current?.(false).catch(() => {});
-      }, 250);
+        if (!disposedRef.current) loadDataRef.current?.(false, false).catch(() => {});
+      }, 500);
     };
 
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
@@ -208,14 +223,16 @@ export default function HomeScreen() {
     const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
       const wasConnected = netConnectedRef.current;
       netConnectedRef.current = state.isConnected === true;
+      useSettingsStore.getState().setMetered(Boolean((state.details as any)?.isConnectionExpensive));
       if (wasConnected === false && netConnectedRef.current) scheduleForegroundRefresh();
     });
 
     NetInfo.fetch().then((state) => {
       if (disposedRef.current) return;
       netConnectedRef.current = state.isConnected === true;
+      useSettingsStore.getState().setMetered(Boolean((state.details as any)?.isConnectionExpensive));
       if (netConnectedRef.current && appStateRef.current === 'active') {
-        loadDataRef.current?.(false).catch(() => {});
+        loadDataRef.current?.(false, false).catch(() => {});
       } else {
         restoreSnapshot().catch(() => {});
         setLoading(false);
@@ -239,7 +256,7 @@ export default function HomeScreen() {
   }, []);
 
   const handleRefresh = () => {
-    loadData(true).catch(() => {});
+    loadData(true, true).catch(() => {});
   };
 
   const handleDownloadRecommendation = async (item: RecommendationItem) => {
