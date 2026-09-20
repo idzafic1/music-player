@@ -119,6 +119,7 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
           downloadingIds: new Set(s.downloadingIds).add(song.id),
           downloadProgress: { ...s.downloadProgress, [song.id]: 0 },
         }));
+        let songSuccess = false;
         try {
           await offlineStorage.downloadSong(song, (songProgress) => {
             set((s) => ({
@@ -129,6 +130,14 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
               } : null,
             }));
           });
+          songSuccess = true;
+        } catch (err) {
+          if (control.cancelled) break;
+          const message = err instanceof Error ? err.message : 'Download failed';
+          set((s) => ({
+            failedDownloads: { ...s.failedDownloads, [song.id]: { song, error: message } },
+            lastError: message,
+          }));
         } finally {
           set((s) => {
             const downloading = new Set(s.downloadingIds);
@@ -139,11 +148,13 @@ export const useOfflineStore = create<OfflineState>((set, get) => ({
         control.activeSongId = null;
         if (control.cancelled) break;
 
-        completed += 1;
-        set((s) => ({
-          downloadedSongIds: new Set(s.downloadedSongIds).add(song.id),
-          playlistDownload: s.playlistDownload ? { ...s.playlistDownload, completed, progress: completed / songs.length } : null,
-        }));
+        if (songSuccess) {
+          completed += 1;
+          set((s) => ({
+            downloadedSongIds: new Set(s.downloadedSongIds).add(song.id),
+            playlistDownload: s.playlistDownload ? { ...s.playlistDownload, completed, progress: completed / songs.length } : null,
+          }));
+        }
       }
     } catch (err) {
       if (!control.cancelled) {
